@@ -50,6 +50,21 @@ dotnet build .\MiniBrowser.sln -c Release
 dotnet run --project .\src\MiniBrowser.App\MiniBrowser.App.csproj
 ```
 
+## Self-Test
+
+MiniBrowser includes a lightweight self-test project that does not require an external test framework:
+
+```powershell
+.\scripts\Run-SelfTest.ps1
+```
+
+It verifies:
+
+- EasyList-style host and URL rules
+- whitelist bypass behavior
+- cosmetic selector injection
+- site profile normalization and persistence
+
 ## Build Portable Package
 
 ```powershell
@@ -137,5 +152,4 @@ youtube.com|True|False|1|True|True|False|0.92
 ## Roadmap
 
 - Broader EasyList syntax coverage.
-- GitHub Actions workflow for release publishing.
 - Optional MSIX or Inno Setup installer.
