@@ -6,6 +6,8 @@ public sealed class AppSettings
     public string LastUrl { get; set; } = "https://www.bing.com";
     public bool GlobalHotkeyEnabled { get; set; } = true;
     public bool LowMemoryMode { get; set; } = true;
+    public bool AutoCheckUpdates { get; set; } = true;
+    public DateTime LastUpdateCheckUtc { get; set; } = DateTime.MinValue;
     public bool AdBlockEnabled { get; set; } = true;
     public List<string> AdBlockWhitelist { get; set; } = [];
     public List<string> CustomBlockedHosts { get; set; } = [];

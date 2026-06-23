@@ -18,6 +18,7 @@ public partial class SettingsWindow : Window
         HomeUrlBox.Text = _settings.HomeUrl;
         HotkeyCheck.IsChecked = _settings.GlobalHotkeyEnabled;
         AdBlockCheck.IsChecked = _settings.AdBlockEnabled;
+        AutoUpdateCheck.IsChecked = _settings.AutoCheckUpdates;
         QuickSitesBox.Text = string.Join(Environment.NewLine, _settings.QuickSites.Select(site => $"{site.Name}|{site.Url}"));
         WhitelistBox.Text = string.Join(Environment.NewLine, _settings.AdBlockWhitelist);
         BlockedHostsBox.Text = string.Join(Environment.NewLine, _settings.CustomBlockedHosts);
@@ -28,6 +29,7 @@ public partial class SettingsWindow : Window
         _settings.HomeUrl = HomeUrlBox.Text.Trim();
         _settings.GlobalHotkeyEnabled = HotkeyCheck.IsChecked == true;
         _settings.AdBlockEnabled = AdBlockCheck.IsChecked == true;
+        _settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked == true;
         _settings.QuickSites = ParseSites(QuickSitesBox.Text).ToList();
         _settings.AdBlockWhitelist = ParseLines(WhitelistBox.Text).ToList();
         _settings.CustomBlockedHosts = ParseLines(BlockedHostsBox.Text).ToList();

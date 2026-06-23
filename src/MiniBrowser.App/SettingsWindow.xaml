@@ -24,6 +24,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="120" />
@@ -41,6 +42,11 @@
                            FontSize="12"
                            Margin="0,4,0,0" />
             </StackPanel>
+            <CheckBox x:Name="AutoUpdateCheck"
+                      Grid.Row="3"
+                      Grid.Column="1"
+                      Content="Check for updates automatically"
+                      Margin="0,0,0,14" />
         </Grid>
 
         <TabControl Grid.Row="2">

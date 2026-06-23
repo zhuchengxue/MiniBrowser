@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,10 +32,12 @@ public partial class MainWindow : Window
 
     private readonly SettingsService _settingsService;
     private readonly AdBlockService _adBlockService;
+    private readonly UpdateService _updateService = new();
     private readonly AppSettings _settings;
     private readonly WindowProfile _profile;
     private readonly TrayService _trayService;
     private readonly HotkeyService? _hotkeyService;
+    private readonly bool _isPrimaryWindow;
     private bool _hotkeyWarningShown;
     private bool _isReallyClosing;
     private bool _isEditingAddress;
@@ -47,6 +50,7 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
         _settings = settings;
         _profile = profile;
+        _isPrimaryWindow = enableHotkey;
         _adBlockService = new AdBlockService(_settings.CustomBlockedHosts);
         _adBlockService.LoadEasyListLite(RuntimePaths.EasyListLitePath);
         _trayService = new TrayService(this, ExitApplication, ToggleBorderMode, ShowChrome, ShowAboveTray);
@@ -110,6 +114,7 @@ public partial class MainWindow : Window
             await Browser.EnsureCoreWebView2Async(environment);
             ConfigureBrowser();
             Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
+            _ = CheckForUpdatesOnStartupAsync();
         }
         catch (Exception ex)
         {
@@ -389,6 +394,10 @@ public partial class MainWindow : Window
         clearCache.Click += async (_, _) => await ClearRuntimeCacheAsync();
         menu.Items.Add(clearCache);
 
+        var updates = new MenuItem { Header = "Check for updates" };
+        updates.Click += async (_, _) => await CheckForUpdatesInteractiveAsync();
+        menu.Items.Add(updates);
+
         var clean = new MenuItem { Header = _profile.ChromeVisible ? "Clean mode    F8" : "Show controls    F8" };
         clean.Click += ChromeButton_Click;
         menu.Items.Add(clean);
@@ -490,6 +499,143 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
+    }
+
+    private async Task CheckForUpdatesOnStartupAsync()
+    {
+        if (!_isPrimaryWindow || !_settings.AutoCheckUpdates)
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow - _settings.LastUpdateCheckUtc < TimeSpan.FromHours(24))
+        {
+            return;
+        }
+
+        _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+        SaveSettings();
+        try
+        {
+            var result = await _updateService.CheckAsync();
+            if (result.IsAvailable)
+            {
+                Dispatcher.Invoke(() => PromptForUpdate(result));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Startup update check failed.");
+        }
+    }
+
+    private async Task CheckForUpdatesInteractiveAsync()
+    {
+        try
+        {
+            StatusText.Text = "Checking updates...";
+            var result = await _updateService.CheckAsync();
+            _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+            SaveSettings();
+
+            if (result.IsUnavailable)
+            {
+                StatusText.Text = "Update check failed";
+                System.Windows.MessageBox.Show(
+                    "MiniBrowser could not check for updates.\n\n" + result.Error,
+                    "MiniBrowser",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!result.IsAvailable)
+            {
+                StatusText.Text = "MiniBrowser is up to date";
+                System.Windows.MessageBox.Show(
+                    $"MiniBrowser {AppInfo.Version} is up to date.",
+                    "MiniBrowser",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            PromptForUpdate(result);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Interactive update check failed.");
+            StatusText.Text = "Update check failed";
+            System.Windows.MessageBox.Show(
+                "MiniBrowser could not check for updates.\n\n" + ex.Message,
+                "MiniBrowser",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private async void PromptForUpdate(UpdateCheckResult result)
+    {
+        var message = $"MiniBrowser {result.VersionTag} is available.\n\nCurrent version: {AppInfo.Version}";
+        if (result.Asset is null)
+        {
+            var openRelease = System.Windows.MessageBox.Show(
+                message + "\n\nNo portable update package was found in the release. Open the release page?",
+                "MiniBrowser Update",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+            if (openRelease == MessageBoxResult.Yes)
+            {
+                OpenExternalUrl(result.ReleaseUrl);
+            }
+
+            return;
+        }
+
+        var answer = System.Windows.MessageBox.Show(
+            message + "\n\nDownload and install this update now? MiniBrowser will restart.",
+            "MiniBrowser Update",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await DownloadAndApplyUpdateAsync(result.Asset);
+    }
+
+    private async Task DownloadAndApplyUpdateAsync(UpdateAsset asset)
+    {
+        try
+        {
+            var progress = new Progress<double>(value => StatusText.Text = $"Downloading update {Math.Round(value * 100)}%...");
+            var zipPath = await _updateService.DownloadAsync(asset, progress);
+            var scriptPath = _updateService.PrepareUpdaterScript(zipPath);
+            SaveSettings();
+            _updateService.LaunchUpdater(scriptPath);
+            _isReallyClosing = true;
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Update download/apply failed.");
+            StatusText.Text = "Update failed";
+            System.Windows.MessageBox.Show(
+                "MiniBrowser could not install the update.\n\n" + ex.Message,
+                "MiniBrowser",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true
+        });
     }
 
     private void ChromeButton_Click(object sender, RoutedEventArgs e)

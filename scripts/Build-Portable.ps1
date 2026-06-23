@@ -98,6 +98,8 @@ Shortcuts:
 
 Set-Content -LiteralPath (Join-Path $publishDir "README.txt") -Value $readme -Encoding UTF8
 Set-Content -LiteralPath (Join-Path $publishDir "VERSION.txt") -Value "0.4.9" -Encoding ASCII
+Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.ps1") -Destination (Join-Path $publishDir "Install-MiniBrowser.ps1") -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.cmd") -Destination (Join-Path $publishDir "Install-MiniBrowser.cmd") -Force
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
