@@ -1,0 +1,94 @@
+<Window x:Class="MiniBrowser.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MiniBrowser Settings"
+        Width="520"
+        Height="620"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8F8FA">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Foreground="#111827" />
+            <TextBlock Text="Portable settings are saved beside the app in Data/settings.json." Margin="0,4,0,16" Foreground="#6B7280" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Home" VerticalAlignment="Center" />
+            <TextBox x:Name="HomeUrlBox" Grid.Row="0" Grid.Column="1" Height="32" Margin="0,0,0,10" />
+
+            <CheckBox x:Name="HotkeyCheck" Grid.Row="1" Grid.Column="1" Content="Ctrl+Shift+Space toggles the first window" Margin="0,0,0,8" />
+            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,14">
+                <CheckBox x:Name="AdBlockCheck" Content="Enable global ad blocking" />
+                <TextBlock Text="Uses request blocking, lightweight EasyList rules, and cosmetic hiding."
+                           Foreground="#6B7280"
+                           FontSize="12"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+        </Grid>
+
+        <TabControl Grid.Row="2">
+            <TabItem Header="Sites">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Format: Name|https://example.com"
+                               Foreground="#6B7280"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="QuickSitesBox"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             TextWrapping="NoWrap" />
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Whitelist">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Domains listed here will not be blocked."
+                               Foreground="#6B7280"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="WhitelistBox"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Blocked Hosts">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Add ad/tracker domains, one per line."
+                               Foreground="#6B7280"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="BlockedHostsBox"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Shortcuts">
+                <TextBox IsReadOnly="True"
+                         Margin="8"
+                         TextWrapping="Wrap"
+                         Text="Ctrl+Shift+Space  Show/hide first window&#x0a;Ctrl+L  Focus address bar&#x0a;Ctrl+Shift+L  Show controls and focus address bar&#x0a;Ctrl+T  New window from current page&#x0a;Ctrl+W  Close this window&#x0a;Alt+Left / Alt+Right  Back / forward&#x0a;F5 or Ctrl+R  Reload&#x0a;F8  Clean mode / show controls&#x0a;F9 or Ctrl+Shift+F  Toggle window frame" />
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancel" Width="88" Height="34" Margin="0,0,8,0" Click="CancelButton_Click" />
+            <Button Content="Save" Width="88" Height="34" Click="SaveButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
