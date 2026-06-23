@@ -1,13 +1,16 @@
 using MiniBrowser.App.Infrastructure;
 using MiniBrowser.App.Models;
 using MiniBrowser.App.Services;
+using System.Text.Json;
 
 var tests = new (string Name, Action Body)[]
 {
     ("AdBlock blocks EasyList hosts and URL rules", AdBlockBlocksEasyListRules),
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
-    ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles)
+    ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
+    ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
+    ("Update parser treats current release as current", UpdateParserTreatsCurrentReleaseAsCurrent)
 };
 
 var failures = new List<string>();
@@ -114,6 +117,54 @@ static void SettingsNormalizesSiteProfiles()
     Assert(loaded.Windows[0].Height == 320, "window height should be clamped");
     Assert(loaded.Windows[0].Opacity == 1.0, "invalid window opacity should fall back");
     Assert(!string.IsNullOrWhiteSpace(loaded.Windows[0].Id), "window id should be regenerated");
+}
+
+static void UpdateParserFindsNewerPortableRelease()
+{
+    using var document = JsonDocument.Parse(
+        """
+        {
+          "tag_name": "v99.0.0",
+          "html_url": "https://github.com/zhuchengxue/MiniBrowser/releases/tag/v99.0.0",
+          "assets": [
+            {
+              "name": "MiniBrowser-Portable.zip",
+              "browser_download_url": "https://example.com/MiniBrowser-Portable.zip"
+            },
+            {
+              "name": "MiniBrowser-Setup.zip",
+              "browser_download_url": "https://example.com/MiniBrowser-Setup.zip"
+            }
+          ]
+        }
+        """);
+
+    var result = UpdateService.ParseRelease(document.RootElement);
+    Assert(result.IsAvailable, "newer release should be available");
+    Assert(result.Asset is not null, "portable asset should be selected");
+    Assert(result.Asset!.Name == AppInfo.PortableAssetName, "portable asset name should match");
+    Assert(result.Asset.DownloadUrl.EndsWith(AppInfo.PortableAssetName, StringComparison.Ordinal), "download URL should be kept");
+}
+
+static void UpdateParserTreatsCurrentReleaseAsCurrent()
+{
+    using var document = JsonDocument.Parse(
+        $$"""
+        {
+          "tag_name": "v{{AppInfo.Version}}",
+          "html_url": "https://github.com/zhuchengxue/MiniBrowser/releases/tag/v{{AppInfo.Version}}",
+          "assets": [
+            {
+              "name": "MiniBrowser-Portable.zip",
+              "browser_download_url": "https://example.com/MiniBrowser-Portable.zip"
+            }
+          ]
+        }
+        """);
+
+    var result = UpdateService.ParseRelease(document.RootElement);
+    Assert(!result.IsAvailable, "current release should not be available as update");
+    Assert(!result.IsUnavailable, "current release should not be treated as unavailable");
 }
 
 static void Assert(bool condition, string message)

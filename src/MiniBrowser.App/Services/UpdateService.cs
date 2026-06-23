@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
 using MiniBrowser.App.Infrastructure;
@@ -22,7 +21,11 @@ public sealed class UpdateService
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var root = document.RootElement;
+        return ParseRelease(document.RootElement);
+    }
+
+    public static UpdateCheckResult ParseRelease(JsonElement root)
+    {
         var tagName = root.GetProperty("tag_name").GetString() ?? string.Empty;
         var releaseUrl = root.GetProperty("html_url").GetString() ?? $"https://github.com/{AppInfo.RepositoryOwner}/{AppInfo.RepositoryName}/releases";
         var version = NormalizeVersion(tagName);
