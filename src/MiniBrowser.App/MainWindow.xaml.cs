@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private bool _isReallyClosing;
     private bool _isEditingAddress;
     private bool _removeProfileOnClose;
+    private bool _applyingSiteProfile;
     private int _blockedRequestCount;
 
     public MainWindow(SettingsService settingsService, AppSettings settings, WindowProfile profile, bool enableHotkey)
@@ -161,6 +162,7 @@ public partial class MainWindow : Window
             {
                 _profile.Url = Browser.Source?.ToString() ?? AddressBox.Text;
                 _settings.LastUrl = _profile.Url;
+                ApplySiteProfileForUrl(_profile.Url, saveWindowState: false);
                 SaveSettings();
                 Browser.CoreWebView2.ExecuteScriptAsync(_adBlockService.CreateCosmeticScript());
             }
@@ -180,7 +182,7 @@ public partial class MainWindow : Window
 
     private void Browser_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
-        var enabled = _settings.AdBlockEnabled && _profile.AdBlockEnabled;
+        var enabled = IsAdBlockEnabledForUrl(e.Request.Uri);
         if (!_adBlockService.ShouldBlock(e.Request.Uri, enabled, _settings.AdBlockWhitelist))
         {
             return;
@@ -208,6 +210,7 @@ public partial class MainWindow : Window
     {
         var url = NormalizeUrl(raw);
         AddressBox.Text = url;
+        ApplySiteProfileForUrl(url, saveWindowState: false);
         Browser.Source = new Uri(url);
     }
 
@@ -379,6 +382,14 @@ public partial class MainWindow : Window
         shield.Click += ShieldButton_Click;
         menu.Items.Add(shield);
 
+        var saveSiteProfile = new MenuItem { Header = CurrentSiteProfile() is null ? "Save site profile" : "Update site profile" };
+        saveSiteProfile.Click += (_, _) => SaveCurrentSiteProfile();
+        menu.Items.Add(saveSiteProfile);
+
+        var clearSiteProfile = new MenuItem { Header = "Clear site profile", IsEnabled = CurrentSiteProfile() is not null };
+        clearSiteProfile.Click += (_, _) => ClearCurrentSiteProfile();
+        menu.Items.Add(clearSiteProfile);
+
         var adStats = new MenuItem
         {
             Header = $"Ad block: {_blockedRequestCount} blocked, {_adBlockService.HostRuleCount} host rules, {_adBlockService.UrlRuleCount} URL rules",
@@ -440,10 +451,11 @@ public partial class MainWindow : Window
         else if (_settings.AdBlockWhitelist.Any(item => HostMatches(host, item)))
         {
             _settings.AdBlockWhitelist.RemoveAll(item => HostMatches(host, item));
+            GetOrCreateSiteProfile(host).AdBlockEnabled = true;
         }
         else
         {
-            _settings.AdBlockWhitelist.Add(host);
+            GetOrCreateSiteProfile(host).AdBlockEnabled = !IsCurrentSiteAdBlockEnabled();
         }
 
         SaveSettings();
@@ -841,21 +853,36 @@ public partial class MainWindow : Window
 
     private void SaveSettings()
     {
-        _profile.Width = Width;
-        _profile.Height = Height;
+        if (!_applyingSiteProfile)
+        {
+            _profile.Width = Width;
+            _profile.Height = Height;
+            _profile.Opacity = Opacity;
+        }
+
         _profile.Left = Left;
         _profile.Top = Top;
-        _profile.Opacity = Opacity;
         _profile.Url = Browser.Source?.ToString() ?? _profile.Url;
         _settings.LastUrl = _profile.Url;
         _settingsService.Save(_settings);
+    }
+
+    private bool IsAdBlockEnabledForUrl(string rawUrl)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return _settings.AdBlockEnabled && _profile.AdBlockEnabled;
+        }
+
+        return _settings.AdBlockEnabled &&
+               (SiteProfileForHost(uri.Host)?.AdBlockEnabled ?? _profile.AdBlockEnabled);
     }
 
     private bool IsCurrentSiteAdBlockEnabled()
     {
         var host = CurrentHost();
         return _settings.AdBlockEnabled &&
-               _profile.AdBlockEnabled &&
+               (SiteProfileForHost(host)?.AdBlockEnabled ?? _profile.AdBlockEnabled) &&
                (string.IsNullOrWhiteSpace(host) || !_settings.AdBlockWhitelist.Any(item => HostMatches(host, item)));
     }
 
@@ -876,6 +903,121 @@ public partial class MainWindow : Window
         trimmed = trimmed.TrimStart('.').TrimEnd('/');
         return host.Equals(trimmed, StringComparison.OrdinalIgnoreCase) ||
                host.EndsWith("." + trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private SiteProfile? CurrentSiteProfile()
+    {
+        return SiteProfileForHost(CurrentHost());
+    }
+
+    private SiteProfile? SiteProfileForHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return null;
+        }
+
+        return _settings.SiteProfiles.FirstOrDefault(site => HostMatches(host, site.Host));
+    }
+
+    private SiteProfile GetOrCreateSiteProfile(string host)
+    {
+        var normalized = NormalizeHost(host);
+        var existing = _settings.SiteProfiles.FirstOrDefault(site => HostMatches(normalized, site.Host));
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var profile = new SiteProfile { Host = normalized };
+        _settings.SiteProfiles.Add(profile);
+        return profile;
+    }
+
+    private void SaveCurrentSiteProfile()
+    {
+        var host = CurrentHost();
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return;
+        }
+
+        var site = GetOrCreateSiteProfile(host);
+        site.MobileMode = _profile.MobileMode;
+        site.AdBlockEnabled = IsCurrentSiteAdBlockEnabled();
+        site.Topmost = Topmost;
+        site.ChromeVisible = _profile.ChromeVisible;
+        site.Borderless = _profile.Borderless;
+        site.Opacity = Opacity;
+        site.SizePresetIndex = _profile.SizePresetIndex;
+        SaveSettings();
+        StatusText.Text = $"Saved profile for {site.Host}";
+    }
+
+    private void ClearCurrentSiteProfile()
+    {
+        var host = CurrentHost();
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return;
+        }
+
+        _settings.SiteProfiles.RemoveAll(site => HostMatches(host, site.Host));
+        SaveSettings();
+        StatusText.Text = $"Cleared profile for {host}";
+    }
+
+    private void ApplySiteProfileForUrl(string rawUrl, bool saveWindowState)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        var site = SiteProfileForHost(uri.Host);
+        if (site is null)
+        {
+            return;
+        }
+
+        _applyingSiteProfile = true;
+        try
+        {
+            _profile.MobileMode = site.MobileMode;
+            _profile.AdBlockEnabled = site.AdBlockEnabled;
+            _profile.Topmost = site.Topmost;
+            _profile.ChromeVisible = site.ChromeVisible;
+            _profile.Borderless = site.Borderless;
+            _profile.Opacity = site.Opacity;
+            _profile.SizePresetIndex = site.SizePresetIndex;
+            Topmost = site.Topmost;
+            Opacity = ClampOpacity(site.Opacity);
+            ApplyWindowPreset(CurrentPreset());
+            ApplyBorderMode();
+            ApplyChromeVisibility();
+            ApplyUserAgent();
+            UpdateToggleLabels();
+        }
+        finally
+        {
+            _applyingSiteProfile = false;
+        }
+
+        if (saveWindowState)
+        {
+            SaveSettings();
+        }
+    }
+
+    private static string NormalizeHost(string value)
+    {
+        var trimmed = value.Trim().ToLowerInvariant();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            trimmed = uri.Host;
+        }
+
+        return trimmed.TrimStart('.').TrimEnd('/');
     }
 
     private WindowPreset CurrentPreset()

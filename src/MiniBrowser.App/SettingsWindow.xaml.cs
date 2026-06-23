@@ -21,6 +21,7 @@ public partial class SettingsWindow : Window
         AutoUpdateCheck.IsChecked = _settings.AutoCheckUpdates;
         QuickSitesBox.Text = string.Join(Environment.NewLine, _settings.QuickSites.Select(site => $"{site.Name}|{site.Url}"));
         WhitelistBox.Text = string.Join(Environment.NewLine, _settings.AdBlockWhitelist);
+        SiteProfilesBox.Text = string.Join(Environment.NewLine, _settings.SiteProfiles.Select(FormatSiteProfile));
         BlockedHostsBox.Text = string.Join(Environment.NewLine, _settings.CustomBlockedHosts);
     }
 
@@ -32,6 +33,7 @@ public partial class SettingsWindow : Window
         _settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked == true;
         _settings.QuickSites = ParseSites(QuickSitesBox.Text).ToList();
         _settings.AdBlockWhitelist = ParseLines(WhitelistBox.Text).ToList();
+        _settings.SiteProfiles = ParseSiteProfiles(SiteProfilesBox.Text).ToList();
         _settings.CustomBlockedHosts = ParseLines(BlockedHostsBox.Text).ToList();
         _settingsService.Save(_settings);
         DialogResult = true;
@@ -54,6 +56,59 @@ public partial class SettingsWindow : Window
                 yield return new QuickSite(parts[0].Trim(), parts[1].Trim());
             }
         }
+    }
+
+    private static string FormatSiteProfile(SiteProfile profile)
+    {
+        return string.Join(
+            "|",
+            profile.Host,
+            profile.MobileMode,
+            profile.AdBlockEnabled,
+            profile.SizePresetIndex,
+            profile.Topmost,
+            profile.Borderless,
+            profile.ChromeVisible,
+            Math.Round(profile.Opacity, 2));
+    }
+
+    private static IEnumerable<SiteProfile> ParseSiteProfiles(string text)
+    {
+        foreach (var line in ParseLines(text))
+        {
+            var parts = line.Split('|', StringSplitOptions.TrimEntries);
+            if (parts.Length < 1 || string.IsNullOrWhiteSpace(parts[0]))
+            {
+                continue;
+            }
+
+            yield return new SiteProfile
+            {
+                Host = parts[0],
+                MobileMode = ParseBool(parts, 1, true),
+                AdBlockEnabled = ParseBool(parts, 2, true),
+                SizePresetIndex = ParseInt(parts, 3, 0),
+                Topmost = ParseBool(parts, 4, true),
+                Borderless = ParseBool(parts, 5, false),
+                ChromeVisible = ParseBool(parts, 6, true),
+                Opacity = ParseDouble(parts, 7, 1.0)
+            };
+        }
+    }
+
+    private static bool ParseBool(string[] parts, int index, bool fallback)
+    {
+        return parts.Length > index && bool.TryParse(parts[index], out var value) ? value : fallback;
+    }
+
+    private static int ParseInt(string[] parts, int index, int fallback)
+    {
+        return parts.Length > index && int.TryParse(parts[index], out var value) ? value : fallback;
+    }
+
+    private static double ParseDouble(string[] parts, int index, double fallback)
+    {
+        return parts.Length > index && double.TryParse(parts[index], out var value) ? value : fallback;
     }
 
     private static IEnumerable<string> ParseLines(string text)

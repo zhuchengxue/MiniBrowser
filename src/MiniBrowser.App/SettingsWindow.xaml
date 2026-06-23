@@ -73,6 +73,18 @@
                              VerticalScrollBarVisibility="Auto" />
                 </DockPanel>
             </TabItem>
+            <TabItem Header="Site Profiles">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Format: host|mobile|adblock|sizeIndex|topmost|borderless|chrome|opacity"
+                               Foreground="#6B7280"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="SiteProfilesBox"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             TextWrapping="NoWrap" />
+                </DockPanel>
+            </TabItem>
             <TabItem Header="Blocked Hosts">
                 <DockPanel Margin="8">
                     <TextBlock DockPanel.Dock="Top"

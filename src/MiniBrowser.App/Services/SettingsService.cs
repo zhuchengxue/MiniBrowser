@@ -71,6 +71,19 @@ public sealed class SettingsService
         settings.WindowTop = NormalizePosition(settings.WindowTop);
         settings.WindowOpacity = NormalizeRange(settings.WindowOpacity, 1.0, 0.7, 1.0);
         settings.SizePresetIndex = Math.Max(0, settings.SizePresetIndex);
+        settings.SiteProfiles = settings.SiteProfiles
+            .Where(site => !string.IsNullOrWhiteSpace(site.Host))
+            .GroupBy(site => NormalizeHost(site.Host), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var site = group.Last();
+                site.Host = group.Key;
+                site.Opacity = NormalizeRange(site.Opacity, 1.0, 0.7, 1.0);
+                site.SizePresetIndex = Math.Max(0, site.SizePresetIndex);
+                return site;
+            })
+            .OrderBy(site => site.Host, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         foreach (var window in settings.Windows)
         {
@@ -111,6 +124,17 @@ public sealed class SettingsService
     private static string NormalizeUrl(string value, string fallback)
     {
         return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private static string NormalizeHost(string value)
+    {
+        var trimmed = value.Trim().ToLowerInvariant();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            trimmed = uri.Host;
+        }
+
+        return trimmed.TrimStart('.').TrimEnd('/');
     }
 
     private void TryMigrateLegacySettings()

@@ -12,6 +12,7 @@ public sealed class AppSettings
     public List<string> AdBlockWhitelist { get; set; } = [];
     public List<string> CustomBlockedHosts { get; set; } = [];
     public List<WindowProfile> Windows { get; set; } = [];
+    public List<SiteProfile> SiteProfiles { get; set; } = [];
     public double WindowWidth { get; set; } = 390;
     public double WindowHeight { get; set; } = 844;
     public double WindowLeft { get; set; } = -1;
@@ -31,6 +32,18 @@ public sealed class AppSettings
 }
 
 public sealed record QuickSite(string Name, string Url);
+
+public sealed class SiteProfile
+{
+    public string Host { get; set; } = string.Empty;
+    public bool MobileMode { get; set; } = true;
+    public bool AdBlockEnabled { get; set; } = true;
+    public bool Topmost { get; set; } = true;
+    public bool ChromeVisible { get; set; } = true;
+    public bool Borderless { get; set; }
+    public double Opacity { get; set; } = 1.0;
+    public int SizePresetIndex { get; set; }
+}
 
 public sealed class WindowProfile
 {

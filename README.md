@@ -1,48 +1,48 @@
 # MiniBrowser
 
-MiniBrowser 是一个 Windows 极简小窗浏览器，目标是接近 MenubarX 的常驻、轻量、小窗口体验。它基于 WPF + Microsoft WebView2，支持系统托盘、手机尺寸窗口、广告拦截、多窗口恢复和 portable 数据目录。
+MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built with WPF and Microsoft WebView2, and is designed for small mobile-sized windows, tray-first usage, portable data, and lightweight ad blocking.
 
-## 当前能力
+## Features
 
-- 手机尺寸默认窗口，可切换桌面/手机 User-Agent
-- 顶部极简地址栏、返回、前进、刷新、菜单
-- 托盘图标单击唤出/隐藏，窗口可显示在托盘图标正上方
-- 全局快捷键 `Ctrl+Shift+Space` 唤出/隐藏第一个窗口
-- `Ctrl+T` 新建小窗，`Ctrl+W` 关闭当前小窗
-- 多窗口配置恢复，窗口大小、位置、透明度、置顶、边框状态会保存
-- 轻量广告拦截，支持内置域名规则、简化 EasyList 解析、CSS cosmetic hiding
-- 全局白名单与当前站点广告拦截开关
-- Portable 数据目录：`Data/settings.json`、`Data/WebView2`、`Data/Logs`
-- GitHub Releases 更新检查与 portable zip 自动下载/替换
-- 当前用户安装脚本，可创建开始菜单、桌面快捷方式和卸载项
+- Mobile-sized browser windows with phone/desktop User-Agent switching.
+- Minimal top chrome with address bar, back, forward, refresh, and menu controls.
+- Tray icon toggle. The window can appear centered above the tray icon.
+- Global hotkey: `Ctrl+Shift+Space` shows or hides the first window.
+- Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
+- Site profiles: save phone/desktop mode, ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
+- Ad blocking with built-in host rules, custom hosts, simplified EasyList parsing, and cosmetic CSS hiding.
+- Global whitelist and per-site ad blocking toggle.
+- Portable data in `Data/settings.json`, `Data/WebView2`, and `Data/Logs`.
+- GitHub Releases update check and portable zip self-update flow.
+- Per-user installer script with Start Menu shortcut, Desktop shortcut, and uninstall entry.
 
-## 快速运行
+## Quick Start
 
-双击：
+Double-click:
 
 ```text
 Open-MiniBrowser.cmd
 ```
 
-第一次运行会自动构建 portable 版本，然后启动：
+The first run builds the portable package and starts:
 
 ```text
 dist\MiniBrowser-Portable\MiniBrowser.App.exe
 ```
 
-要求：
+Requirements:
 
 - Windows 10/11
 - Microsoft Edge WebView2 Runtime
 - .NET 8 Desktop Runtime x64
 
-## 开发运行
+## Development
 
 ```powershell
 .\scripts\Run-Dev.ps1
 ```
 
-或手动执行：
+Or run manually:
 
 ```powershell
 dotnet restore
@@ -50,72 +50,92 @@ dotnet build .\MiniBrowser.sln -c Release
 dotnet run --project .\src\MiniBrowser.App\MiniBrowser.App.csproj
 ```
 
-## 打包 Portable 版
+## Build Portable Package
 
 ```powershell
 .\scripts\Build-Portable.ps1
 ```
 
-输出：
+Output:
 
 ```text
 dist\MiniBrowser-Portable
 dist\MiniBrowser-Portable.zip
 ```
 
-`MiniBrowser-Portable.zip` 是 GitHub Release 自动更新默认查找的资产名。发布新版本时，请把这个 zip 上传到 GitHub Release，并用类似 `v0.4.9` 的 tag。
+`MiniBrowser-Portable.zip` is the default asset name used by the automatic updater. For a new release, upload this zip to a GitHub Release and use a tag such as `v0.4.9`.
 
-## 打包安装包
+## Build Installer Package
 
 ```powershell
 .\scripts\Build-Installer.ps1
 ```
 
-输出：
+Output:
 
 ```text
 dist\MiniBrowser-Setup.zip
 ```
 
-安装包里包含 portable 程序和安装脚本。用户解压后运行：
+After extracting the setup zip, run:
 
 ```text
 Install-MiniBrowser.cmd
 ```
 
-默认安装到：
+Default install location:
 
 ```text
 %LOCALAPPDATA%\Programs\MiniBrowser
 ```
 
-安装脚本会创建开始菜单快捷方式、桌面快捷方式，并在“应用和功能”里写入 MiniBrowser 卸载项。整个安装过程不需要管理员权限。
+The installer creates Start Menu and Desktop shortcuts, then writes a per-user uninstall entry. Administrator rights are not required.
 
-## 自动更新
+## Updates
 
-应用内菜单包含 `Check for updates`。默认每天自动检查一次：
+The app menu includes `Check for updates`. By default, MiniBrowser checks once per day:
 
 ```text
 https://api.github.com/repos/zhuchengxue/MiniBrowser/releases/latest
 ```
 
-当发现新版本，且 release 中存在 `MiniBrowser-Portable.zip` 时，MiniBrowser 会下载 zip、启动外部更新脚本、关闭自身、替换程序文件并重新启动。更新会保留本地 `Data` 目录。
+When a newer release contains `MiniBrowser-Portable.zip`, MiniBrowser downloads it, starts an external PowerShell updater, closes itself, replaces app files, preserves `Data`, and restarts.
 
-## 快捷键
+## Site Profiles
 
-- `Ctrl+Shift+Space`：唤出/隐藏第一个窗口
-- `Ctrl+L`：聚焦地址栏
-- `Ctrl+Shift+L`：显示顶部栏并聚焦地址栏
-- `Ctrl+T`：从当前页面新建小窗
-- `Ctrl+W`：关闭当前小窗
-- `Alt+Left` / `Alt+Right`：返回 / 前进
-- `F5` 或 `Ctrl+R`：刷新
-- `F8`：Clean mode / Show controls
-- `F9` 或 `Ctrl+Shift+F`：切换窗口边框
+The app menu includes:
 
-## 路线图
+- `Save site profile` / `Update site profile`: saves the current window mode for the current host.
+- `Clear site profile`: removes the profile for the current host.
+- `Ad block: ON/OFF for this site`: toggles ad blocking for the current host.
 
-- 更完整的 EasyList 语法覆盖
-- 自动发布 GitHub Release 的 CI workflow
-- 更精细的站点级配置：窗口尺寸、UA、广告拦截、置顶等按站点保存
-- 可选 MSIX/Inno Setup 安装器
+The Settings window also has a `Site Profiles` tab. Each line uses:
+
+```text
+host|mobile|adblock|sizeIndex|topmost|borderless|chrome|opacity
+```
+
+Examples:
+
+```text
+www.bing.com|True|True|0|True|False|True|1
+youtube.com|True|False|1|True|True|False|0.92
+```
+
+## Shortcuts
+
+- `Ctrl+Shift+Space`: show/hide first window
+- `Ctrl+L`: focus address bar
+- `Ctrl+Shift+L`: show controls and focus address bar
+- `Ctrl+T`: new window from current page
+- `Ctrl+W`: close current window
+- `Alt+Left` / `Alt+Right`: back / forward
+- `F5` or `Ctrl+R`: reload
+- `F8`: clean mode / show controls
+- `F9` or `Ctrl+Shift+F`: toggle window frame
+
+## Roadmap
+
+- Broader EasyList syntax coverage.
+- GitHub Actions workflow for release publishing.
+- Optional MSIX or Inno Setup installer.
