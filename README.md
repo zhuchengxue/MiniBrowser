@@ -65,6 +65,8 @@ It verifies:
 - cosmetic selector injection
 - site profile normalization and persistence
 
+Run self-tests and Release builds sequentially. Both commands compile the app project, so running them in parallel can make MSBuild fight over the same `obj` files.
+
 ## Build Portable Package
 
 ```powershell
@@ -115,6 +117,12 @@ https://api.github.com/repos/zhuchengxue/MiniBrowser/releases/latest
 ```
 
 When a newer release contains `MiniBrowser-Portable.zip`, MiniBrowser downloads it, starts an external PowerShell updater, closes itself, replaces app files, preserves `Data`, and restarts.
+
+To verify that a GitHub Release is ready for automatic updates:
+
+```powershell
+.\scripts\Verify-Release.ps1 -ExpectedTag v0.4.9
+```
 
 ## Site Profiles
 
