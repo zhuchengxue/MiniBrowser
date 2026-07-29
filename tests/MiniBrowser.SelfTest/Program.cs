@@ -10,6 +10,7 @@ var tests = new (string Name, Action Body)[]
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
     ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
+    ("Settings defaults popup position to bottom right", SettingsDefaultsPopupPositionToBottomRight),
     ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
     ("Update parser treats current release as current", UpdateParserTreatsCurrentReleaseAsCurrent)
 };
@@ -127,6 +128,15 @@ static void SettingsDefaultsToGoogleSearch()
     service.Save(settings);
     var loaded = service.Load();
     Assert(loaded.SearchEngineUrl == "https://www.google.com/search?q={query}", "invalid search template should fall back to Google");
+}
+
+static void SettingsDefaultsPopupPositionToBottomRight()
+{
+    var settings = new AppSettings { PopupPosition = "Floating" };
+    var service = new SettingsService();
+    service.Save(settings);
+    var loaded = service.Load();
+    Assert(loaded.PopupPosition == "BottomRight", "invalid popup position should fall back to bottom right");
 }
 
 static void UpdateParserFindsNewerPortableRelease()

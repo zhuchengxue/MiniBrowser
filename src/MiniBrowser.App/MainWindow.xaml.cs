@@ -1100,24 +1100,24 @@ public partial class MainWindow : Window
         ShowChrome();
         Show();
         WindowState = WindowState.Normal;
-        PositionAboveTray(_trayService.GetTrayAnchorPoint());
-        Activate();
-        ForceForegroundWindow();
+        PositionPopup(_trayService.GetTrayAnchorPoint());
+        BringWindowToForeground();
+        FocusAddressBar();
         Topmost = true;
         Topmost = _profile.Topmost;
         Dispatcher.BeginInvoke(() =>
         {
-            PositionAboveTray(_trayService.GetTrayAnchorPoint());
-            Activate();
-            ForceForegroundWindow();
-            AddressBox.Focus();
-            Keyboard.Focus(AddressBox);
-            AddressBox.SelectAll();
+            PositionPopup(_trayService.GetTrayAnchorPoint());
+            BringWindowToForeground();
+            FocusAddressBar();
         }, DispatcherPriority.ApplicationIdle);
+        Dispatcher.BeginInvoke(FocusAddressBar, DispatcherPriority.ContextIdle);
     }
 
-    private void ForceForegroundWindow()
+    private void BringWindowToForeground()
     {
+        Focus();
+        Activate();
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero)
         {
@@ -1126,6 +1126,16 @@ public partial class MainWindow : Window
 
         ShowWindow(handle, 9);
         SetForegroundWindow(handle);
+        SetFocus(handle);
+    }
+
+    private void FocusAddressBar()
+    {
+        _isEditingAddress = true;
+        FocusManager.SetFocusedElement(this, AddressBox);
+        AddressBox.Focus();
+        Keyboard.Focus(AddressBox);
+        AddressBox.SelectAll();
     }
 
     private void ShowAboveTray(System.Drawing.Point trayPoint)
@@ -1140,12 +1150,12 @@ public partial class MainWindow : Window
         ShowChrome();
         Show();
         WindowState = WindowState.Normal;
-        PositionAboveTray(trayPoint);
-        Activate();
+        PositionPopup(trayPoint);
+        BringWindowToForeground();
         SaveSettings();
     }
 
-    private void PositionAboveTray(System.Drawing.Point trayPoint)
+    private void PositionPopup(System.Drawing.Point trayPoint)
     {
         var screen = System.Windows.Forms.Screen.FromPoint(trayPoint);
         var work = screen.WorkingArea;
@@ -1153,18 +1163,17 @@ public partial class MainWindow : Window
         var fromDevice = source?.CompositionTarget?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
         var topLeft = fromDevice.Transform(new System.Windows.Point(work.Left, work.Top));
         var bottomRight = fromDevice.Transform(new System.Windows.Point(work.Right, work.Bottom));
-        var tray = fromDevice.Transform(new System.Windows.Point(trayPoint.X, trayPoint.Y));
 
         var width = ActualWidth > 0 ? ActualWidth : Width;
         var height = ActualHeight > 0 ? ActualHeight : Height;
         var margin = 8d;
-        var targetLeft = tray.X - width / 2;
-        var targetTop = tray.Y - height - margin;
-
-        if (targetTop < topLeft.Y + margin)
+        var targetLeft = _settings.PopupPosition switch
         {
-            targetTop = tray.Y + margin;
-        }
+            "BottomLeft" => topLeft.X + margin,
+            "BottomCenter" => topLeft.X + ((bottomRight.X - topLeft.X) - width) / 2,
+            _ => bottomRight.X - width - margin
+        };
+        var targetTop = bottomRight.Y - height - margin;
 
         Left = Math.Clamp(targetLeft, topLeft.X + margin, bottomRight.X - width - margin);
         Top = Math.Clamp(targetTop, topLeft.Y + margin, bottomRight.Y - height - margin);
@@ -1203,4 +1212,7 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
 }

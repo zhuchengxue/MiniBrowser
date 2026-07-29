@@ -6,8 +6,8 @@ MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built wi
 
 - Mobile-sized browser windows with phone/desktop User-Agent switching.
 - Minimal top chrome with address bar, back, forward, refresh, and menu controls.
-- Tray icon toggle. The window can appear centered above the tray icon.
-- Global hotkey: `Ctrl+Shift+Space` shows/hides MiniBrowser above the tray icon and focuses the address bar.
+- Tray icon toggle. The window can appear at the bottom left, bottom center, or bottom right of the active taskbar screen.
+- Global hotkey: `Ctrl+Shift+Space` shows/hides MiniBrowser at the configured bottom position and focuses the address bar.
 - Search engine is configurable. The default is Google: `https://www.google.com/search?q={query}`.
 - Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
 - Site profiles: save phone/desktop mode, ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.

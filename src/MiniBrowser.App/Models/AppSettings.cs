@@ -5,6 +5,7 @@ public sealed class AppSettings
     public string HomeUrl { get; set; } = "https://www.google.com";
     public string LastUrl { get; set; } = "https://www.google.com";
     public string SearchEngineUrl { get; set; } = "https://www.google.com/search?q={query}";
+    public string PopupPosition { get; set; } = "BottomRight";
     public bool GlobalHotkeyEnabled { get; set; } = true;
     public bool LowMemoryMode { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
