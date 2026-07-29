@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     private bool _isEditingAddress;
     private bool _removeProfileOnClose;
     private bool _applyingSiteProfile;
+    private bool _usesPopupStartupPosition;
     private int _blockedRequestCount;
     private System.Windows.Interop.HwndSource? _keyboardSource;
 
@@ -68,6 +69,12 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = _profile.Left;
             Top = _profile.Top;
+        }
+        else
+        {
+            _usesPopupStartupPosition = true;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            PositionPopupInWorkArea(SystemParameters.WorkArea);
         }
 
         Opacity = ClampOpacity(_profile.Opacity);
@@ -117,6 +124,11 @@ public partial class MainWindow : Window
         {
             Show();
             WindowState = WindowState.Normal;
+            if (_usesPopupStartupPosition)
+            {
+                PositionPopup(_trayService.GetTrayAnchorPoint());
+            }
+
             Activate();
 
             var options = new CoreWebView2EnvironmentOptions
@@ -1104,9 +1116,7 @@ public partial class MainWindow : Window
         _profile.Opacity = 1.0;
         Opacity = 1.0;
         ApplyWindowPreset(CurrentPreset());
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Left = (SystemParameters.WorkArea.Width - Width) / 2;
-        Top = (SystemParameters.WorkArea.Height - Height) / 2;
+        PositionPopup(_trayService.GetTrayAnchorPoint());
         ApplyBorderMode();
         ApplyChromeVisibility();
         SaveSettings();
@@ -1235,7 +1245,18 @@ public partial class MainWindow : Window
         var fromDevice = source?.CompositionTarget?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
         var topLeft = fromDevice.Transform(new System.Windows.Point(work.Left, work.Top));
         var bottomRight = fromDevice.Transform(new System.Windows.Point(work.Right, work.Bottom));
+        PositionPopupInBounds(topLeft, bottomRight);
+    }
 
+    private void PositionPopupInWorkArea(Rect work)
+    {
+        PositionPopupInBounds(
+            new System.Windows.Point(work.Left, work.Top),
+            new System.Windows.Point(work.Right, work.Bottom));
+    }
+
+    private void PositionPopupInBounds(System.Windows.Point topLeft, System.Windows.Point bottomRight)
+    {
         var width = ActualWidth > 0 ? ActualWidth : Width;
         var height = ActualHeight > 0 ? ActualHeight : Height;
         var margin = 8d;
