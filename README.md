@@ -108,6 +108,23 @@ Default install location:
 
 The installer creates Start Menu and Desktop shortcuts, then writes a per-user uninstall entry. Administrator rights are not required.
 
+## Build Single EXE Package
+
+For sharing with people who do not have the .NET Desktop Runtime installed:
+
+```powershell
+.\scripts\Build-SingleExe.ps1
+```
+
+Output:
+
+```text
+dist\MiniBrowser-SingleExe\MiniBrowser.exe
+dist\MiniBrowser-SingleExe.zip
+```
+
+This executable includes the .NET runtime. It still requires Microsoft Edge WebView2 Runtime, which is already installed on most Windows 10/11 systems.
+
 ## Updates
 
 The app menu includes `Check for updates`. By default, MiniBrowser checks once per day:

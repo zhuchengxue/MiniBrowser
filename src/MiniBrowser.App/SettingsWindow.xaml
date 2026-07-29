@@ -25,6 +25,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="120" />
@@ -46,6 +47,11 @@
                       Grid.Row="3"
                       Grid.Column="1"
                       Content="Check for updates automatically"
+                      Margin="0,0,0,8" />
+            <CheckBox x:Name="LowMemoryCheck"
+                      Grid.Row="4"
+                      Grid.Column="1"
+                      Content="Low memory mode"
                       Margin="0,0,0,14" />
         </Grid>
 

@@ -344,12 +344,17 @@ public partial class MainWindow : Window
         home.Click += (_, _) => Navigate(_settings.HomeUrl);
         menu.Items.Add(home);
 
-        menu.Items.Add(new Separator());
-        foreach (var site in _settings.QuickSites)
+        if (_settings.QuickSites.Count > 0)
         {
-            var item = new MenuItem { Header = site.Name, Tag = site.Url };
-            item.Click += (_, _) => Navigate(site.Url);
-            menu.Items.Add(item);
+            var quickSites = new MenuItem { Header = "Quick sites" };
+            foreach (var site in _settings.QuickSites)
+            {
+                var item = new MenuItem { Header = site.Name, Tag = site.Url };
+                item.Click += (_, _) => Navigate(site.Url);
+                quickSites.Items.Add(item);
+            }
+
+            menu.Items.Add(quickSites);
         }
 
         menu.Items.Add(new Separator());
@@ -362,70 +367,33 @@ public partial class MainWindow : Window
         phone.Click += MobileButton_Click;
         menu.Items.Add(phone);
 
-        var pin = new MenuItem { Header = Topmost ? "Unpin window" : "Keep on top" };
-        pin.Click += TopmostButton_Click;
-        menu.Items.Add(pin);
-
-        var size = new MenuItem { Header = $"Size: {CurrentPreset().Name}" };
-        size.Click += SizeButton_Click;
-        menu.Items.Add(size);
-
-        var opacity = new MenuItem { Header = $"Opacity: {Math.Round(Opacity * 100)}%" };
-        opacity.Click += OpacityButton_Click;
-        menu.Items.Add(opacity);
-
-        var frame = new MenuItem { Header = _profile.Borderless ? "Show window frame    F9" : "Hide window frame    F9" };
-        frame.Click += BorderButton_Click;
-        menu.Items.Add(frame);
-
         var shield = new MenuItem { Header = IsCurrentSiteAdBlockEnabled() ? "Ad block: ON for this site" : "Ad block: OFF for this site" };
         shield.Click += ShieldButton_Click;
         menu.Items.Add(shield);
 
-        var saveSiteProfile = new MenuItem { Header = CurrentSiteProfile() is null ? "Save site profile" : "Update site profile" };
+        var siteProfile = new MenuItem { Header = "Site profile" };
+        var saveSiteProfile = new MenuItem { Header = CurrentSiteProfile() is null ? "Save current mode" : "Update current mode" };
         saveSiteProfile.Click += (_, _) => SaveCurrentSiteProfile();
-        menu.Items.Add(saveSiteProfile);
+        siteProfile.Items.Add(saveSiteProfile);
 
-        var clearSiteProfile = new MenuItem { Header = "Clear site profile", IsEnabled = CurrentSiteProfile() is not null };
+        var clearSiteProfile = new MenuItem { Header = "Clear saved mode", IsEnabled = CurrentSiteProfile() is not null };
         clearSiteProfile.Click += (_, _) => ClearCurrentSiteProfile();
-        menu.Items.Add(clearSiteProfile);
-
-        var adStats = new MenuItem
-        {
-            Header = $"Ad block: {_blockedRequestCount} blocked, {_adBlockService.HostRuleCount} host rules, {_adBlockService.UrlRuleCount} URL rules",
-            IsEnabled = false
-        };
-        menu.Items.Add(adStats);
-
-        var lowMemory = new MenuItem { Header = _settings.LowMemoryMode ? "Low memory mode: ON" : "Low memory mode: OFF" };
-        lowMemory.Click += (_, _) => ToggleLowMemoryMode();
-        menu.Items.Add(lowMemory);
-
-        var clearCache = new MenuItem { Header = "Clear runtime cache" };
-        clearCache.Click += async (_, _) => await ClearRuntimeCacheAsync();
-        menu.Items.Add(clearCache);
-
-        var updates = new MenuItem { Header = "Check for updates" };
-        updates.Click += async (_, _) => await CheckForUpdatesInteractiveAsync();
-        menu.Items.Add(updates);
+        siteProfile.Items.Add(clearSiteProfile);
+        menu.Items.Add(siteProfile);
 
         var clean = new MenuItem { Header = _profile.ChromeVisible ? "Clean mode    F8" : "Show controls    F8" };
         clean.Click += ChromeButton_Click;
         menu.Items.Add(clean);
 
         menu.Items.Add(new Separator());
-        var resetLayout = new MenuItem { Header = "Reset layout" };
-        resetLayout.Click += (_, _) => ResetLayout();
-        menu.Items.Add(resetLayout);
-
-        var settings = new MenuItem { Header = "Settings" };
-        settings.Click += (_, _) =>
+        var preferences = new MenuItem { Header = "Preferences" };
+        preferences.Click += (_, _) =>
         {
             var settingsWindow = new SettingsWindow(_settingsService, _settings) { Owner = this };
             settingsWindow.ShowDialog();
             QuickSites.ItemsSource = _settings.QuickSites;
         };
-        menu.Items.Add(settings);
+        menu.Items.Add(preferences);
 
         menu.Items.Add(new Separator());
         var closeWindow = new MenuItem { Header = "Close this window    Ctrl+W" };
