@@ -43,10 +43,9 @@ function New-IconBitmap {
     $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     Add-RoundedRectangle $bgPath $rect ([float]($Size * 0.235))
 
-    $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 11, 15))), $bgPath)
+    $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 248, 249, 250))), $bgPath)
 
-    $glyphBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 246, 248, 250))
-    $cutBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 11, 15))
+    $glyphBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 12, 18))
 
     # Minimal browser mark: one rounded viewport, one address line, one search dot.
     $viewport = New-Object System.Drawing.RectangleF ([float]($Size * 0.265)), ([float]($Size * 0.335)), ([float]($Size * 0.47)), ([float]($Size * 0.33))

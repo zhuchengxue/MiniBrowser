@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using MiniBrowser.App.Infrastructure;
 using MiniBrowser.App.Models;
@@ -86,7 +88,7 @@ public partial class MainWindow : Window
                 }
             };
             _hotkeyService = new HotkeyService(this);
-            _hotkeyService.Pressed += (_, _) => ShowWindowAndFocusAddress();
+            _hotkeyService.Pressed += (_, _) => Dispatcher.BeginInvoke(ShowWindowAndFocusAddress, DispatcherPriority.Send);
         }
 
         UpdateToggleLabels();
@@ -1098,7 +1100,30 @@ public partial class MainWindow : Window
         Show();
         WindowState = WindowState.Normal;
         Activate();
-        ShowChromeAndFocusAddress();
+        ForceForegroundWindow();
+        Topmost = true;
+        Topmost = _profile.Topmost;
+        ShowChrome();
+        Dispatcher.BeginInvoke(() =>
+        {
+            Activate();
+            ForceForegroundWindow();
+            AddressBox.Focus();
+            Keyboard.Focus(AddressBox);
+            AddressBox.SelectAll();
+        }, DispatcherPriority.ApplicationIdle);
+    }
+
+    private void ForceForegroundWindow()
+    {
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        ShowWindow(handle, 9);
+        SetForegroundWindow(handle);
     }
 
     private void ShowAboveTray(System.Drawing.Point trayPoint)
@@ -1170,4 +1195,10 @@ public partial class MainWindow : Window
     }
 
     private sealed record WindowPreset(string Name, double Width, double Height);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
