@@ -1097,15 +1097,17 @@ public partial class MainWindow : Window
 
     private void ShowWindowAndFocusAddress()
     {
+        ShowChrome();
         Show();
         WindowState = WindowState.Normal;
+        PositionAboveTray(_trayService.GetTrayAnchorPoint());
         Activate();
         ForceForegroundWindow();
         Topmost = true;
         Topmost = _profile.Topmost;
-        ShowChrome();
         Dispatcher.BeginInvoke(() =>
         {
+            PositionAboveTray(_trayService.GetTrayAnchorPoint());
             Activate();
             ForceForegroundWindow();
             AddressBox.Focus();

@@ -38,7 +38,7 @@ function New-IconBitmap {
     $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
 
-    $pad = [float]($Size * 0.085)
+    $pad = [float]($Size * 0.065)
     $rect = New-Object System.Drawing.RectangleF $pad, $pad, ($Size - 2 * $pad), ($Size - 2 * $pad)
     $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     Add-RoundedRectangle $bgPath $rect ([float]($Size * 0.235))
@@ -48,20 +48,20 @@ function New-IconBitmap {
     $glyphBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 12, 18))
 
     # Minimal browser mark: one rounded viewport, one address line, one search dot.
-    $viewport = New-Object System.Drawing.RectangleF ([float]($Size * 0.265)), ([float]($Size * 0.335)), ([float]($Size * 0.47)), ([float]($Size * 0.33))
+    $viewport = New-Object System.Drawing.RectangleF ([float]($Size * 0.20)), ([float]($Size * 0.295)), ([float]($Size * 0.60)), ([float]($Size * 0.42))
     $viewportPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     Add-RoundedRectangle $viewportPath $viewport ([float]($Size * 0.105))
-    $windowPen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.045))
+    $windowPen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.06))
     $windowPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
     $g.DrawPath($windowPen, $viewportPath)
 
-    $linePen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.04))
+    $linePen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.052))
     $linePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
     $linePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $g.DrawLine($linePen, ([float]($Size * 0.36)), ([float]($Size * 0.445)), ([float]($Size * 0.64)), ([float]($Size * 0.445)))
+    $g.DrawLine($linePen, ([float]($Size * 0.31)), ([float]($Size * 0.425)), ([float]($Size * 0.69)), ([float]($Size * 0.425)))
 
-    $dotSize = [float]($Size * 0.078)
-    $g.FillEllipse($glyphBrush, ([float]($Size * 0.461)), ([float]($Size * 0.532)), $dotSize, $dotSize)
+    $dotSize = [float]($Size * 0.095)
+    $g.FillEllipse($glyphBrush, ([float]($Size * 0.452)), ([float]($Size * 0.545)), $dotSize, $dotSize)
 
     $g.Dispose()
     return $bitmap
