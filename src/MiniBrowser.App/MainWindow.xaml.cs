@@ -64,17 +64,17 @@ public partial class MainWindow : Window
 
         Width = _profile.Width;
         Height = _profile.Height;
-        if (_profile.Left >= 0 && _profile.Top >= 0)
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual;
-            Left = _profile.Left;
-            Top = _profile.Top;
-        }
-        else
+        if (_isPrimaryWindow || _profile.Left < 0 || _profile.Top < 0)
         {
             _usesPopupStartupPosition = true;
             WindowStartupLocation = WindowStartupLocation.Manual;
             PositionPopupInWorkArea(SystemParameters.WorkArea);
+        }
+        else
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = _profile.Left;
+            Top = _profile.Top;
         }
 
         Opacity = ClampOpacity(_profile.Opacity);
