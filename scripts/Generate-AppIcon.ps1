@@ -40,40 +40,29 @@ function New-IconBitmap {
 
     $pad = [float]($Size * 0.085)
     $rect = New-Object System.Drawing.RectangleF $pad, $pad, ($Size - 2 * $pad), ($Size - 2 * $pad)
-    $radius = [float]($Size * 0.235)
     $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    Add-RoundedRectangle $bgPath $rect $radius
+    Add-RoundedRectangle $bgPath $rect ([float]($Size * 0.235))
 
-    $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, ([System.Drawing.Color]::FromArgb(255, 22, 26, 34)), ([System.Drawing.Color]::FromArgb(255, 7, 10, 15)), 90
-    $g.FillPath($bg, $bgPath)
+    $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 11, 15))), $bgPath)
 
-    $borderPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(48, 255, 255, 255)), ([Math]::Max(1, $Size * 0.012))
-    $g.DrawPath($borderPen, $bgPath)
+    $glyphBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 246, 248, 250))
+    $cutBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 8, 11, 15))
 
-    $glyphColor = [System.Drawing.Color]::FromArgb(238, 236, 241, 246)
-    $accentColor = [System.Drawing.Color]::FromArgb(255, 98, 205, 255)
-    $mutedColor = [System.Drawing.Color]::FromArgb(125, 236, 241, 246)
-
-    $browserRect = New-Object System.Drawing.RectangleF ($Size * 0.255), ($Size * 0.318), ($Size * 0.49), ($Size * 0.35)
-    $browserPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    Add-RoundedRectangle $browserPath $browserRect ([float]($Size * 0.065))
-    $windowPen = New-Object System.Drawing.Pen $glyphColor, ([Math]::Max(2, $Size * 0.032))
+    # Minimal browser mark: one rounded viewport, one address line, one search dot.
+    $viewport = New-Object System.Drawing.RectangleF ([float]($Size * 0.265)), ([float]($Size * 0.335)), ([float]($Size * 0.47)), ([float]($Size * 0.33))
+    $viewportPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    Add-RoundedRectangle $viewportPath $viewport ([float]($Size * 0.105))
+    $windowPen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.045))
     $windowPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-    $g.DrawPath($windowPen, $browserPath)
+    $g.DrawPath($windowPen, $viewportPath)
 
-    $barPen = New-Object System.Drawing.Pen $mutedColor, ([Math]::Max(1, $Size * 0.018))
-    $barY = [float]($Size * 0.405)
-    $g.DrawLine($barPen, ($Size * 0.315), $barY, ($Size * 0.685), $barY)
+    $linePen = New-Object System.Drawing.Pen $glyphBrush, ([Math]::Max(2, $Size * 0.04))
+    $linePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $linePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $g.DrawLine($linePen, ([float]($Size * 0.36)), ([float]($Size * 0.445)), ([float]($Size * 0.64)), ([float]($Size * 0.445)))
 
-    $arcRect = New-Object System.Drawing.RectangleF ($Size * 0.365), ($Size * 0.45), ($Size * 0.27), ($Size * 0.18)
-    $arcPen = New-Object System.Drawing.Pen $accentColor, ([Math]::Max(2, $Size * 0.03))
-    $arcPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $arcPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $g.DrawArc($arcPen, $arcRect, 205, 130)
-
-    $dotBrush = New-Object System.Drawing.SolidBrush $accentColor
-    $dot = [float]($Size * 0.044)
-    $g.FillEllipse($dotBrush, ($Size * 0.478), ($Size * 0.535), $dot, $dot)
+    $dotSize = [float]($Size * 0.078)
+    $g.FillEllipse($glyphBrush, ([float]($Size * 0.461)), ([float]($Size * 0.532)), $dotSize, $dotSize)
 
     $g.Dispose()
     return $bitmap

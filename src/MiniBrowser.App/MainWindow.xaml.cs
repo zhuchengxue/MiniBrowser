@@ -86,7 +86,7 @@ public partial class MainWindow : Window
                 }
             };
             _hotkeyService = new HotkeyService(this);
-            _hotkeyService.Pressed += (_, _) => ToggleWindowVisibility();
+            _hotkeyService.Pressed += (_, _) => ShowWindowAndFocusAddress();
         }
 
         UpdateToggleLabels();
@@ -1091,6 +1091,14 @@ public partial class MainWindow : Window
         Show();
         WindowState = WindowState.Normal;
         Activate();
+    }
+
+    private void ShowWindowAndFocusAddress()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        ShowChromeAndFocusAddress();
     }
 
     private void ShowAboveTray(System.Drawing.Point trayPoint)
