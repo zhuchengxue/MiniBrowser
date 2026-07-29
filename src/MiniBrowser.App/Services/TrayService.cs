@@ -50,27 +50,7 @@ public sealed class TrayService : IDisposable
     private Forms.ContextMenuStrip BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Show", null, (_, _) => ShowWindow());
-        if (_showAboveTray is not null)
-        {
-            menu.Items.Add("Show above tray", null, (_, _) => ShowAboveTrayOrWindow());
-        }
-
-        menu.Items.Add("Hide", null, (_, _) => _window.Hide());
-        if (_toggleFrame is not null)
-        {
-            menu.Items.Add("Toggle frame", null, (_, _) => _toggleFrame());
-        }
-
-        if (_showControls is not null)
-        {
-            menu.Items.Add("Show controls", null, (_, _) =>
-            {
-                ShowWindow();
-                _showControls();
-            });
-        }
-
+        menu.Items.Add("Show / Hide", null, (_, _) => ShowAboveTrayOrWindow());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) =>
         {

@@ -7,7 +7,8 @@ MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built wi
 - Mobile-sized browser windows with phone/desktop User-Agent switching.
 - Minimal top chrome with address bar, back, forward, refresh, and menu controls.
 - Tray icon toggle. The window can appear centered above the tray icon.
-- Global hotkey: `Ctrl+Shift+Space` shows MiniBrowser and focuses the address bar.
+- Global hotkey: `Ctrl+Shift+Space` shows/hides MiniBrowser above the tray icon and focuses the address bar.
+- Search engine is configurable. The default is Google: `https://www.google.com/search?q={query}`.
 - Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
 - Site profiles: save phone/desktop mode, ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
 - Ad blocking with built-in host rules, custom hosts, simplified EasyList parsing, and cosmetic CSS hiding.
@@ -164,7 +165,7 @@ youtube.com|True|False|1|True|True|False|0.92
 
 ## Shortcuts
 
-- `Ctrl+Shift+Space`: show MiniBrowser and focus address bar
+- `Ctrl+Shift+Space`: show/hide MiniBrowser and focus address bar
 - `Ctrl+L`: focus address bar
 - `Ctrl+Shift+L`: show controls and focus address bar
 - `Ctrl+T`: new window from current page

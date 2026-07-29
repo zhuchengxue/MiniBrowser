@@ -9,6 +9,7 @@ var tests = new (string Name, Action Body)[]
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
+    ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
     ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
     ("Update parser treats current release as current", UpdateParserTreatsCurrentReleaseAsCurrent)
 };
@@ -117,6 +118,15 @@ static void SettingsNormalizesSiteProfiles()
     Assert(loaded.Windows[0].Height == 320, "window height should be clamped");
     Assert(loaded.Windows[0].Opacity == 1.0, "invalid window opacity should fall back");
     Assert(!string.IsNullOrWhiteSpace(loaded.Windows[0].Id), "window id should be regenerated");
+}
+
+static void SettingsDefaultsToGoogleSearch()
+{
+    var settings = new AppSettings { SearchEngineUrl = "https://example.com/search" };
+    var service = new SettingsService();
+    service.Save(settings);
+    var loaded = service.Load();
+    Assert(loaded.SearchEngineUrl == "https://www.google.com/search?q={query}", "invalid search template should fall back to Google");
 }
 
 static void UpdateParserFindsNewerPortableRelease()

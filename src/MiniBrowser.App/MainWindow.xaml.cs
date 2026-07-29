@@ -216,12 +216,12 @@ public partial class MainWindow : Window
         Browser.Source = new Uri(url);
     }
 
-    private static string NormalizeUrl(string raw)
+    private string NormalizeUrl(string raw)
     {
         var value = raw.Trim();
         if (string.IsNullOrWhiteSpace(value))
         {
-            return "https://www.bing.com";
+            return _settings.HomeUrl;
         }
 
         if (Uri.TryCreate(value, UriKind.Absolute, out var absolute) &&
@@ -235,7 +235,20 @@ public partial class MainWindow : Window
             return "https://" + value;
         }
 
-        return "https://www.bing.com/search?q=" + Uri.EscapeDataString(value);
+        return BuildSearchUrl(value);
+    }
+
+    private string BuildSearchUrl(string query)
+    {
+        var template = string.IsNullOrWhiteSpace(_settings.SearchEngineUrl)
+            ? "https://www.google.com/search?q={query}"
+            : _settings.SearchEngineUrl;
+        if (!template.Contains("{query}", StringComparison.OrdinalIgnoreCase))
+        {
+            template = "https://www.google.com/search?q={query}";
+        }
+
+        return template.Replace("{query}", Uri.EscapeDataString(query), StringComparison.OrdinalIgnoreCase);
     }
 
     private void ApplyUserAgent()
@@ -346,21 +359,7 @@ public partial class MainWindow : Window
         home.Click += (_, _) => Navigate(_settings.HomeUrl);
         menu.Items.Add(home);
 
-        if (_settings.QuickSites.Count > 0)
-        {
-            var quickSites = new MenuItem { Header = "Quick sites" };
-            foreach (var site in _settings.QuickSites)
-            {
-                var item = new MenuItem { Header = site.Name, Tag = site.Url };
-                item.Click += (_, _) => Navigate(site.Url);
-                quickSites.Items.Add(item);
-            }
-
-            menu.Items.Add(quickSites);
-        }
-
-        menu.Items.Add(new Separator());
-        var newWindow = new MenuItem { Header = "New window from this page" };
+        var newWindow = new MenuItem { Header = "New window    Ctrl+T" };
         newWindow.Click += (_, _) => OpenNewWindowFromCurrentPage();
         menu.Items.Add(newWindow);
 
@@ -373,17 +372,7 @@ public partial class MainWindow : Window
         shield.Click += ShieldButton_Click;
         menu.Items.Add(shield);
 
-        var siteProfile = new MenuItem { Header = "Site profile" };
-        var saveSiteProfile = new MenuItem { Header = CurrentSiteProfile() is null ? "Save current mode" : "Update current mode" };
-        saveSiteProfile.Click += (_, _) => SaveCurrentSiteProfile();
-        siteProfile.Items.Add(saveSiteProfile);
-
-        var clearSiteProfile = new MenuItem { Header = "Clear saved mode", IsEnabled = CurrentSiteProfile() is not null };
-        clearSiteProfile.Click += (_, _) => ClearCurrentSiteProfile();
-        siteProfile.Items.Add(clearSiteProfile);
-        menu.Items.Add(siteProfile);
-
-        var clean = new MenuItem { Header = _profile.ChromeVisible ? "Clean mode    F8" : "Show controls    F8" };
+        var clean = new MenuItem { Header = _profile.ChromeVisible ? "Hide controls    F8" : "Show controls    F8" };
         clean.Click += ChromeButton_Click;
         menu.Items.Add(clean);
 
@@ -398,6 +387,10 @@ public partial class MainWindow : Window
         menu.Items.Add(preferences);
 
         menu.Items.Add(new Separator());
+        var hideWindow = new MenuItem { Header = "Hide    Ctrl+Shift+Space" };
+        hideWindow.Click += (_, _) => Hide();
+        menu.Items.Add(hideWindow);
+
         var closeWindow = new MenuItem { Header = "Close this window    Ctrl+W" };
         closeWindow.Click += (_, _) => CloseThisWindow();
         menu.Items.Add(closeWindow);
@@ -1097,6 +1090,13 @@ public partial class MainWindow : Window
 
     private void ShowWindowAndFocusAddress()
     {
+        if (IsVisible)
+        {
+            SaveSettings();
+            Hide();
+            return;
+        }
+
         ShowChrome();
         Show();
         WindowState = WindowState.Normal;

@@ -8,6 +8,7 @@
         MinWidth="320"
         MinHeight="520"
         WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
         Icon="Assets/App.ico"
         Background="#F8F8FA">
     <Window.Resources>

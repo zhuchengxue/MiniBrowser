@@ -63,8 +63,9 @@ public sealed class SettingsService
 
     private static void Normalize(AppSettings settings)
     {
-        settings.HomeUrl = NormalizeUrl(settings.HomeUrl, "https://www.bing.com");
+        settings.HomeUrl = NormalizeUrl(settings.HomeUrl, "https://www.google.com");
         settings.LastUrl = NormalizeUrl(settings.LastUrl, settings.HomeUrl);
+        settings.SearchEngineUrl = NormalizeSearchEngine(settings.SearchEngineUrl);
         settings.WindowWidth = NormalizeRange(settings.WindowWidth, 390, 240, 3000);
         settings.WindowHeight = NormalizeRange(settings.WindowHeight, 844, 320, 3000);
         settings.WindowLeft = NormalizePosition(settings.WindowLeft);
@@ -124,6 +125,16 @@ public sealed class SettingsService
     private static string NormalizeUrl(string value, string fallback)
     {
         return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private static string NormalizeSearchEngine(string value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value)
+            ? "https://www.google.com/search?q={query}"
+            : value.Trim();
+        return trimmed.Contains("{query}", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : "https://www.google.com/search?q={query}";
     }
 
     private static string NormalizeHost(string value)

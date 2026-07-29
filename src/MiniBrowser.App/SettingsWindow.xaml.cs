@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
         _settings = settings;
 
         HomeUrlBox.Text = _settings.HomeUrl;
+        SearchEngineBox.Text = _settings.SearchEngineUrl;
         HotkeyCheck.IsChecked = _settings.GlobalHotkeyEnabled;
         AdBlockCheck.IsChecked = _settings.AdBlockEnabled;
         AutoUpdateCheck.IsChecked = _settings.AutoCheckUpdates;
@@ -29,6 +30,7 @@ public partial class SettingsWindow : Window
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         _settings.HomeUrl = HomeUrlBox.Text.Trim();
+        _settings.SearchEngineUrl = SearchEngineBox.Text.Trim();
         _settings.GlobalHotkeyEnabled = HotkeyCheck.IsChecked == true;
         _settings.AdBlockEnabled = AdBlockCheck.IsChecked == true;
         _settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked == true;
