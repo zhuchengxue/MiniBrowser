@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     private bool _removeProfileOnClose;
     private bool _applyingSiteProfile;
     private int _blockedRequestCount;
+    private System.Windows.Interop.HwndSource? _keyboardSource;
 
     public MainWindow(SettingsService settingsService, AppSettings settings, WindowProfile profile, bool enableHotkey)
     {
@@ -76,6 +77,9 @@ public partial class MainWindow : Window
 
         QuickSites.ItemsSource = _settings.QuickSites;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        Browser.PreviewKeyDown += Browser_KeyDown;
+        Browser.KeyDown += Browser_KeyDown;
+        SourceInitialized += MainWindow_SourceInitialized;
         if (enableHotkey && _settings.GlobalHotkeyEnabled)
         {
             SourceInitialized += (_, _) =>
@@ -96,6 +100,13 @@ public partial class MainWindow : Window
         ApplyBorderMode();
 
         Loaded += MainWindow_Loaded;
+    }
+
+    private void MainWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        _keyboardSource = System.Windows.Interop.HwndSource.FromHwnd(handle);
+        _keyboardSource?.AddHook(WindowKeyboardHook);
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -622,16 +633,17 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
+            e.Handled = true;
             _isEditingAddress = false;
             Navigate(AddressBox.Text);
-            Keyboard.ClearFocus();
+            Dispatcher.BeginInvoke(() => Browser.Focus(), DispatcherPriority.Background);
         }
         else if (e.Key == Key.Escape)
         {
+            e.Handled = true;
             _isEditingAddress = false;
             AddressBox.Text = Browser.Source?.ToString() ?? AddressBox.Text;
-            Keyboard.ClearFocus();
-            e.Handled = true;
+            Dispatcher.BeginInvoke(() => Browser.Focus(), DispatcherPriority.Background);
         }
     }
 
@@ -665,89 +677,146 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.L)
+        if (HandleShortcut(e.Key, Keyboard.Modifiers))
         {
-            ShowChromeAndFocusAddress();
             e.Handled = true;
-            return;
+        }
+    }
+
+    private void Browser_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (HandleShortcut(e.Key, CurrentModifierKeys()))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private IntPtr WindowKeyboardHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int wmKeyDown = 0x0100;
+        const int wmSysKeyDown = 0x0104;
+        if (msg is not wmKeyDown and not wmSysKeyDown)
+        {
+            return IntPtr.Zero;
         }
 
-        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.L)
+        var key = KeyInterop.KeyFromVirtualKey(wParam.ToInt32());
+        if (AddressBox.IsKeyboardFocusWithin && key == Key.Escape)
         {
-            ShowChromeAndFocusAddress();
-            e.Handled = true;
-            return;
+            return IntPtr.Zero;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.H)
+        if (HandleShortcut(key, CurrentModifierKeys()))
+        {
+            handled = true;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private bool HandleShortcut(Key key, ModifierKeys modifiers)
+    {
+        if (modifiers == ModifierKeys.Control && key == Key.L)
+        {
+            ShowChromeAndFocusAddress();
+            return true;
+        }
+
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.L)
+        {
+            ShowChromeAndFocusAddress();
+            return true;
+        }
+
+        if (modifiers == ModifierKeys.Control && key == Key.H)
         {
             Navigate(_settings.HomeUrl);
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.W)
+        if (modifiers == ModifierKeys.Control && key == Key.W)
         {
             CloseThisWindow();
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.T)
+        if (modifiers == ModifierKeys.Control && key == Key.T)
         {
             OpenNewWindowFromCurrentPage();
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (e.Key == Key.F5 || (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.R))
+        if (key == Key.F5 || (modifiers == ModifierKeys.Control && key == Key.R))
         {
             Browser.Reload();
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.Left)
+        if (modifiers == ModifierKeys.Alt && key == Key.Left)
         {
             if (Browser.CanGoBack)
             {
                 Browser.GoBack();
             }
 
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.Right)
+        if (modifiers == ModifierKeys.Alt && key == Key.Right)
         {
             if (Browser.CanGoForward)
             {
                 Browser.GoForward();
             }
 
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (e.Key == Key.F8)
+        if (key == Key.F8)
         {
             ToggleChrome();
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (e.Key == Key.F9 || (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.F))
+        if (key == Key.F9 || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.F))
         {
             ToggleBorderMode();
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        if (e.Key == Key.Escape && _profile.ChromeVisible)
+        if (key == Key.Escape && _profile.ChromeVisible)
         {
             ToggleChrome();
-            e.Handled = true;
+            return true;
         }
+
+        return false;
+    }
+
+    private static ModifierKeys CurrentModifierKeys()
+    {
+        var modifiers = Keyboard.Modifiers;
+        if (IsKeyDown(0x10))
+        {
+            modifiers |= ModifierKeys.Shift;
+        }
+
+        if (IsKeyDown(0x11))
+        {
+            modifiers |= ModifierKeys.Control;
+        }
+
+        if (IsKeyDown(0x12))
+        {
+            modifiers |= ModifierKeys.Alt;
+        }
+
+        return modifiers;
+    }
+
+    private static bool IsKeyDown(int virtualKey)
+    {
+        return (GetKeyState(virtualKey) & 0x8000) != 0;
     }
 
     private void QuickSite_Click(object sender, RoutedEventArgs e)
@@ -809,6 +878,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _keyboardSource?.RemoveHook(WindowKeyboardHook);
         _trayService.Dispose();
         _hotkeyService?.Dispose();
         base.OnClosed(e);
@@ -1215,4 +1285,7 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int nVirtKey);
 }
