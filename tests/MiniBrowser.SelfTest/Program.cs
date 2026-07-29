@@ -9,6 +9,8 @@ var tests = new (string Name, Action Body)[]
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
+    ("Settings normalizes Google NCR startup URLs", SettingsNormalizesGoogleNcrStartupUrls),
+    ("Settings load migrates broken Google startup URL", SettingsLoadMigratesBrokenGoogleStartupUrl),
     ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
     ("Settings defaults popup position to bottom right", SettingsDefaultsPopupPositionToBottomRight),
     ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
@@ -128,6 +130,54 @@ static void SettingsDefaultsToGoogleSearch()
     service.Save(settings);
     var loaded = service.Load();
     Assert(loaded.SearchEngineUrl == "https://www.google.com/search?q={query}", "invalid search template should fall back to Google");
+}
+
+static void SettingsNormalizesGoogleNcrStartupUrls()
+{
+    var settings = new AppSettings
+    {
+        HomeUrl = "https://www.google.com",
+        LastUrl = "https://www.google.cn/m",
+        Windows =
+        [
+            new WindowProfile { Url = "https://www.google.cn/m" }
+        ]
+    };
+    var service = new SettingsService();
+    service.Save(settings);
+    var loaded = service.Load();
+    Assert(loaded.HomeUrl == "https://www.google.com/ncr", "Google home should use NCR URL");
+    Assert(loaded.LastUrl == "https://www.google.com/ncr", "broken Google China mobile URL should migrate to NCR");
+    Assert(loaded.Windows[0].Url == "https://www.google.com/ncr", "window URL should migrate away from broken Google China mobile URL");
+}
+
+static void SettingsLoadMigratesBrokenGoogleStartupUrl()
+{
+    Directory.CreateDirectory(RuntimePaths.DataDirectory);
+    File.WriteAllText(
+        RuntimePaths.SettingsPath,
+        """
+        {
+          "HomeUrl": "https://www.google.com",
+          "LastUrl": "https://www.google.cn/m",
+          "SearchEngineUrl": "https://www.google.com/search?q={query}",
+          "PopupPosition": "BottomRight",
+          "Windows": [
+            {
+              "Id": "test",
+              "Url": "https://www.google.cn/m",
+              "Width": 390,
+              "Height": 844,
+              "Opacity": 1.0
+            }
+          ]
+        }
+        """);
+
+    var loaded = new SettingsService().Load();
+    Assert(loaded.HomeUrl == "https://www.google.com/ncr", "loaded Google home should migrate to NCR");
+    Assert(loaded.LastUrl == "https://www.google.com/ncr", "loaded broken Google China mobile URL should migrate to NCR");
+    Assert(loaded.Windows[0].Url == "https://www.google.com/ncr", "loaded window URL should migrate to NCR");
 }
 
 static void SettingsDefaultsPopupPositionToBottomRight()

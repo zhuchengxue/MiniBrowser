@@ -2,8 +2,8 @@ namespace MiniBrowser.App.Models;
 
 public sealed class AppSettings
 {
-    public string HomeUrl { get; set; } = "https://www.google.com";
-    public string LastUrl { get; set; } = "https://www.google.com";
+    public string HomeUrl { get; set; } = "https://www.google.com/ncr";
+    public string LastUrl { get; set; } = "https://www.google.com/ncr";
     public string SearchEngineUrl { get; set; } = "https://www.google.com/search?q={query}";
     public string PopupPosition { get; set; } = "BottomRight";
     public bool GlobalHotkeyEnabled { get; set; } = true;
@@ -27,7 +27,7 @@ public sealed class AppSettings
     public List<QuickSite> QuickSites { get; set; } =
     [
         new("ChatGPT", "https://chat.openai.com"),
-        new("Google", "https://www.google.com"),
+        new("Google", "https://www.google.com/ncr"),
         new("YouTube", "https://m.youtube.com"),
         new("WeRead", "https://weread.qq.com")
     ];
@@ -51,7 +51,7 @@ public sealed class WindowProfile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Title { get; set; } = "MiniBrowser";
-    public string Url { get; set; } = "https://www.google.com";
+    public string Url { get; set; } = "https://www.google.com/ncr";
     public double Width { get; set; } = 390;
     public double Height { get; set; } = 844;
     public double Left { get; set; } = -1;

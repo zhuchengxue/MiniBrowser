@@ -7,6 +7,9 @@ namespace MiniBrowser.App.Services;
 
 public sealed class SettingsService
 {
+    private const string GoogleNcrUrl = "https://www.google.com/ncr";
+    private const string GoogleSearchUrl = "https://www.google.com/search?q={query}";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -32,7 +35,9 @@ public sealed class SettingsService
         try
         {
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            Normalize(settings);
+            return settings;
         }
         catch (Exception ex)
         {
@@ -40,6 +45,7 @@ public sealed class SettingsService
             var backup = TryLoadBackup();
             if (backup is not null)
             {
+                Normalize(backup);
                 return backup;
             }
 
@@ -63,8 +69,9 @@ public sealed class SettingsService
 
     private static void Normalize(AppSettings settings)
     {
-        settings.HomeUrl = NormalizeUrl(settings.HomeUrl, "https://www.google.com");
+        settings.HomeUrl = NormalizeGoogleHomeUrl(settings.HomeUrl);
         settings.LastUrl = NormalizeUrl(settings.LastUrl, settings.HomeUrl);
+        settings.LastUrl = NormalizeGoogleStartUrl(settings.LastUrl);
         settings.SearchEngineUrl = NormalizeSearchEngine(settings.SearchEngineUrl);
         settings.PopupPosition = NormalizePopupPosition(settings.PopupPosition);
         settings.WindowWidth = NormalizeRange(settings.WindowWidth, 390, 240, 3000);
@@ -90,6 +97,7 @@ public sealed class SettingsService
         foreach (var window in settings.Windows)
         {
             window.Url = NormalizeUrl(window.Url, settings.HomeUrl);
+            window.Url = NormalizeGoogleStartUrl(window.Url);
             window.Width = NormalizeRange(window.Width, 390, 240, 3000);
             window.Height = NormalizeRange(window.Height, 844, 320, 3000);
             window.Left = NormalizePosition(window.Left);
@@ -128,14 +136,36 @@ public sealed class SettingsService
         return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
     }
 
+    private static string NormalizeGoogleHomeUrl(string value)
+    {
+        return NormalizeGoogleStartUrl(NormalizeUrl(value, GoogleNcrUrl));
+    }
+
+    private static string NormalizeGoogleStartUrl(string value)
+    {
+        var trimmed = value.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return trimmed;
+        }
+
+        var host = uri.Host.ToLowerInvariant();
+        var path = uri.AbsolutePath.TrimEnd('/').ToLowerInvariant();
+        var isGoogleDotCom = host is "www.google.com" or "google.com";
+        var isGoogleDotCn = host is "www.google.cn" or "google.cn";
+        var isGoogleHome = isGoogleDotCom && (path is "" or "/");
+        var isBrokenChinaMobileGoogle = isGoogleDotCn && path is "/m";
+        return isGoogleHome || isBrokenChinaMobileGoogle ? GoogleNcrUrl : trimmed;
+    }
+
     private static string NormalizeSearchEngine(string value)
     {
         var trimmed = string.IsNullOrWhiteSpace(value)
-            ? "https://www.google.com/search?q={query}"
+            ? GoogleSearchUrl
             : value.Trim();
         return trimmed.Contains("{query}", StringComparison.OrdinalIgnoreCase)
             ? trimmed
-            : "https://www.google.com/search?q={query}";
+            : GoogleSearchUrl;
     }
 
     private static string NormalizePopupPosition(string value)

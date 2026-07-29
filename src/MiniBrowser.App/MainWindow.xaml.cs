@@ -15,6 +15,8 @@ namespace MiniBrowser.App;
 
 public partial class MainWindow : Window
 {
+    private const string GoogleSearchUrl = "https://www.google.com/search?q={query}";
+
     private const string MobileUserAgent =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
@@ -252,11 +254,11 @@ public partial class MainWindow : Window
     private string BuildSearchUrl(string query)
     {
         var template = string.IsNullOrWhiteSpace(_settings.SearchEngineUrl)
-            ? "https://www.google.com/search?q={query}"
+            ? GoogleSearchUrl
             : _settings.SearchEngineUrl;
         if (!template.Contains("{query}", StringComparison.OrdinalIgnoreCase))
         {
-            template = "https://www.google.com/search?q={query}";
+            template = GoogleSearchUrl;
         }
 
         return template.Replace("{query}", Uri.EscapeDataString(query), StringComparison.OrdinalIgnoreCase);
