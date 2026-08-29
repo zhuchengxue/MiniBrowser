@@ -55,6 +55,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 
+$runtimeDataDir = Join-Path $publishDir "Data"
+if (Test-Path -LiteralPath $runtimeDataDir) {
+    Remove-Item -LiteralPath $runtimeDataDir -Recurse -Force
+}
+
 $launcher = @"
 @echo off
 setlocal
@@ -94,6 +99,10 @@ Shortcuts:
   Ctrl+R            Reload
   F8                Clean mode / show controls
   F9                Toggle window frame
+
+Behavior:
+  Snap the window to a screen edge and move the mouse away to auto-hide it.
+  Automatic update checks are disabled by default for faster startup.
 "@
 
 Set-Content -LiteralPath (Join-Path $publishDir "README.txt") -Value $readme -Encoding UTF8

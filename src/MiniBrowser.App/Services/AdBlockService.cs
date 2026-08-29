@@ -158,7 +158,7 @@ public sealed class AdBlockService
             return false;
         }
 
-        if (_blockedHosts.Any(blocked => HostMatches(host, blocked)))
+        if (MatchesBlockedHost(host))
         {
             return true;
         }
@@ -258,6 +258,23 @@ public sealed class AdBlockService
         return candidates.Select(NormalizeHost)
             .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
             .Any(candidate => HostMatches(host, candidate));
+    }
+
+    private bool MatchesBlockedHost(string host)
+    {
+        var current = host;
+        while (!string.IsNullOrWhiteSpace(current))
+        {
+            if (_blockedHosts.Contains(current))
+            {
+                return true;
+            }
+
+            var dot = current.IndexOf('.');
+            current = dot < 0 ? string.Empty : current[(dot + 1)..];
+        }
+
+        return false;
     }
 
     private static bool HostMatches(string host, string candidate)

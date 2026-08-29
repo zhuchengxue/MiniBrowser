@@ -16,7 +16,6 @@ namespace MiniBrowser.App;
 public partial class MainWindow : Window
 {
     private const string GoogleSearchUrl = "https://www.google.com/search?q={query}";
-
     private const string MobileUserAgent =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
@@ -36,7 +35,9 @@ public partial class MainWindow : Window
 
     private readonly SettingsService _settingsService;
     private readonly AdBlockService _adBlockService;
+    private readonly EdgeAutoHideService _edgeAutoHideService;
     private readonly UpdateService _updateService = new();
+    private readonly string _cosmeticScript;
     private readonly AppSettings _settings;
     private readonly WindowProfile _profile;
     private readonly TrayService _trayService;
@@ -60,7 +61,12 @@ public partial class MainWindow : Window
         _isPrimaryWindow = enableHotkey;
         _adBlockService = new AdBlockService(_settings.CustomBlockedHosts);
         _adBlockService.LoadEasyListLite(RuntimePaths.EasyListLitePath);
+        _cosmeticScript = _adBlockService.CreateCosmeticScript();
         _trayService = new TrayService(this, ExitApplication, ToggleBorderMode, ShowChrome, ShowAboveTray);
+        _edgeAutoHideService = new EdgeAutoHideService(
+            this,
+            () => _settings.EdgeAutoHideEnabled,
+            () => AddressBox.IsKeyboardFocusWithin);
 
         Width = _profile.Width;
         Height = _profile.Height;
@@ -142,7 +148,8 @@ public partial class MainWindow : Window
             await Browser.EnsureCoreWebView2Async(environment);
             ConfigureBrowser();
             Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
-            _ = CheckForUpdatesOnStartupAsync();
+            _edgeAutoHideService.Start();
+            ScheduleStartupUpdateCheck();
         }
         catch (Exception ex)
         {
@@ -163,7 +170,7 @@ public partial class MainWindow : Window
         Browser.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
 
         ApplyUserAgent();
-        Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_adBlockService.CreateCosmeticScript());
+        Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_cosmeticScript);
         Browser.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         Browser.CoreWebView2.NewWindowRequested += Browser_NewWindowRequested;
         Browser.CoreWebView2.WebResourceRequested += Browser_WebResourceRequested;
@@ -191,7 +198,7 @@ public partial class MainWindow : Window
                 _settings.LastUrl = _profile.Url;
                 ApplySiteProfileForUrl(_profile.Url, saveWindowState: false);
                 SaveSettings();
-                Browser.CoreWebView2.ExecuteScriptAsync(_adBlockService.CreateCosmeticScript());
+                Browser.CoreWebView2.ExecuteScriptAsync(_cosmeticScript);
             }
 
             UpdateNavigationButtons();
@@ -216,7 +223,6 @@ public partial class MainWindow : Window
         }
 
         _blockedRequestCount++;
-        Dispatcher.Invoke(UpdateToggleLabels);
         e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
             new MemoryStream([]),
             204,
@@ -527,6 +533,20 @@ public partial class MainWindow : Window
         {
             AppLogger.Error(ex, "Startup update check failed.");
         }
+    }
+
+    private void ScheduleStartupUpdateCheck()
+    {
+        if (!_isPrimaryWindow || !_settings.AutoCheckUpdates)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(8));
+            await CheckForUpdatesOnStartupAsync();
+        }, DispatcherPriority.ApplicationIdle);
     }
 
     private async Task CheckForUpdatesInteractiveAsync()
@@ -874,6 +894,7 @@ public partial class MainWindow : Window
     {
         if (!_isReallyClosing)
         {
+            _edgeAutoHideService.Reveal();
             SaveSettings();
             e.Cancel = true;
             Hide();
@@ -892,6 +913,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _edgeAutoHideService.Dispose();
         _keyboardSource?.RemoveHook(WindowKeyboardHook);
         _trayService.Dispose();
         _hotkeyService?.Dispose();
@@ -900,6 +922,11 @@ public partial class MainWindow : Window
 
     private void SaveSettings()
     {
+        if (_edgeAutoHideService.IsHidden)
+        {
+            return;
+        }
+
         if (!_applyingSiteProfile)
         {
             _profile.Width = Width;
@@ -1093,6 +1120,7 @@ public partial class MainWindow : Window
 
     private void ToggleBorderMode()
     {
+        _edgeAutoHideService.Reveal();
         _profile.Borderless = !_profile.Borderless;
         if (!_profile.Borderless)
         {
@@ -1110,6 +1138,7 @@ public partial class MainWindow : Window
 
     private void ResetLayout()
     {
+        _edgeAutoHideService.Reveal();
         _profile.Borderless = false;
         _profile.ChromeVisible = true;
         _profile.SizePresetIndex = 0;
@@ -1135,6 +1164,13 @@ public partial class MainWindow : Window
 
     private void ShowChrome()
     {
+        if (_profile.ChromeVisible)
+        {
+            ApplyChromeVisibility();
+            UpdateToggleLabels();
+            return;
+        }
+
         _profile.ChromeVisible = true;
         ApplyChromeVisibility();
         SaveSettings();
@@ -1174,11 +1210,13 @@ public partial class MainWindow : Window
     {
         if (IsVisible)
         {
+            _edgeAutoHideService.Reveal();
             SaveSettings();
             Hide();
             return;
         }
 
+        _edgeAutoHideService.Reveal();
         ShowChrome();
         Show();
         WindowState = WindowState.Normal;
@@ -1224,11 +1262,13 @@ public partial class MainWindow : Window
     {
         if (IsVisible)
         {
+            _edgeAutoHideService.Reveal();
             SaveSettings();
             Hide();
             return;
         }
 
+        _edgeAutoHideService.Reveal();
         ShowChrome();
         Show();
         WindowState = WindowState.Normal;
@@ -1257,6 +1297,7 @@ public partial class MainWindow : Window
 
     private void PositionPopupInBounds(System.Windows.Point topLeft, System.Windows.Point bottomRight)
     {
+        _edgeAutoHideService.Reveal();
         var width = ActualWidth > 0 ? ActualWidth : Width;
         var height = ActualHeight > 0 ? ActualHeight : Height;
         var margin = 8d;

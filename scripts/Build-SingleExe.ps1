@@ -46,6 +46,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 
+$runtimeDataDir = Join-Path $publishDir "Data"
+if (Test-Path -LiteralPath $runtimeDataDir) {
+    Remove-Item -LiteralPath $runtimeDataDir -Recurse -Force
+}
+
 Set-Content -LiteralPath (Join-Path $publishDir "README.txt") -Encoding UTF8 -Value @"
 MiniBrowser Single EXE
 ======================

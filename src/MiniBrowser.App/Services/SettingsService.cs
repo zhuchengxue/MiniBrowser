@@ -57,6 +57,11 @@ public sealed class SettingsService
     {
         Normalize(settings);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
+        if (File.Exists(_settingsPath) && File.ReadAllText(_settingsPath) == json)
+        {
+            return;
+        }
+
         var tempPath = _settingsPath + ".tmp";
         File.WriteAllText(tempPath, json);
         if (File.Exists(_settingsPath))

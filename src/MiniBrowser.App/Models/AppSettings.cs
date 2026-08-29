@@ -6,9 +6,10 @@ public sealed class AppSettings
     public string LastUrl { get; set; } = "https://www.google.com/ncr";
     public string SearchEngineUrl { get; set; } = "https://www.google.com/search?q={query}";
     public string PopupPosition { get; set; } = "BottomRight";
+    public bool EdgeAutoHideEnabled { get; set; } = true;
     public bool GlobalHotkeyEnabled { get; set; } = true;
     public bool LowMemoryMode { get; set; } = true;
-    public bool AutoCheckUpdates { get; set; } = true;
+    public bool AutoCheckUpdates { get; set; }
     public DateTime LastUpdateCheckUtc { get; set; } = DateTime.MinValue;
     public bool AdBlockEnabled { get; set; } = true;
     public List<string> AdBlockWhitelist { get; set; } = [];

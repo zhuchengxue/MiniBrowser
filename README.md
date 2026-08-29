@@ -13,6 +13,8 @@ MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built wi
 - Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
 - Site profiles: save phone/desktop mode, ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
 - Ad blocking with built-in host rules, custom hosts, simplified EasyList parsing, and cosmetic CSS hiding.
+- Edge auto-hide keeps a snapped window tucked against the screen edge until the mouse returns.
+- Automatic update checks are off by default to keep startup quiet; use Preferences when you want them.
 - Global whitelist and per-site ad blocking toggle.
 - Portable data in `Data/settings.json`, `Data/WebView2`, and `Data/Logs`.
 - GitHub Releases update check and portable zip self-update flow.

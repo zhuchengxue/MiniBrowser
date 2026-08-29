@@ -13,6 +13,8 @@ var tests = new (string Name, Action Body)[]
     ("Settings load migrates broken Google startup URL", SettingsLoadMigratesBrokenGoogleStartupUrl),
     ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
     ("Settings defaults popup position to bottom right", SettingsDefaultsPopupPositionToBottomRight),
+    ("Settings enables edge auto hide by default", SettingsEnablesEdgeAutoHideByDefault),
+    ("Settings disables startup update checks by default", SettingsDisablesStartupUpdateChecksByDefault),
     ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
     ("Update parser treats current release as current", UpdateParserTreatsCurrentReleaseAsCurrent)
 };
@@ -187,6 +189,18 @@ static void SettingsDefaultsPopupPositionToBottomRight()
     service.Save(settings);
     var loaded = service.Load();
     Assert(loaded.PopupPosition == "BottomRight", "invalid popup position should fall back to bottom right");
+}
+
+static void SettingsEnablesEdgeAutoHideByDefault()
+{
+    var loaded = new SettingsService().Load();
+    Assert(loaded.EdgeAutoHideEnabled, "edge auto hide should default to enabled");
+}
+
+static void SettingsDisablesStartupUpdateChecksByDefault()
+{
+    var loaded = new SettingsService().Load();
+    Assert(!loaded.AutoCheckUpdates, "startup update checks should default to disabled");
 }
 
 static void UpdateParserFindsNewerPortableRelease()

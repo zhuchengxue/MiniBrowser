@@ -18,6 +18,7 @@ public partial class SettingsWindow : Window
         HomeUrlBox.Text = _settings.HomeUrl;
         SearchEngineBox.Text = _settings.SearchEngineUrl;
         PopupPositionBox.SelectedValue = _settings.PopupPosition;
+        EdgeAutoHideCheck.IsChecked = _settings.EdgeAutoHideEnabled;
         HotkeyCheck.IsChecked = _settings.GlobalHotkeyEnabled;
         AdBlockCheck.IsChecked = _settings.AdBlockEnabled;
         AutoUpdateCheck.IsChecked = _settings.AutoCheckUpdates;
@@ -33,6 +34,7 @@ public partial class SettingsWindow : Window
         _settings.HomeUrl = HomeUrlBox.Text.Trim();
         _settings.SearchEngineUrl = SearchEngineBox.Text.Trim();
         _settings.PopupPosition = PopupPositionBox.SelectedValue?.ToString() ?? "BottomRight";
+        _settings.EdgeAutoHideEnabled = EdgeAutoHideCheck.IsChecked == true;
         _settings.GlobalHotkeyEnabled = HotkeyCheck.IsChecked == true;
         _settings.AdBlockEnabled = AdBlockCheck.IsChecked == true;
         _settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked == true;

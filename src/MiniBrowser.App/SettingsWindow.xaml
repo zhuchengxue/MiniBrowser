@@ -28,6 +28,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="120" />
@@ -48,8 +49,10 @@
                 <ComboBoxItem Content="Bottom right" Tag="BottomRight" />
             </ComboBox>
 
-            <CheckBox x:Name="HotkeyCheck" Grid.Row="3" Grid.Column="1" Content="Ctrl+Shift+Space shows/hides MiniBrowser and focuses the address bar" Margin="0,0,0,8" />
-            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,14">
+            <CheckBox x:Name="EdgeAutoHideCheck" Grid.Row="3" Grid.Column="1" Content="Auto-hide when snapped to a screen edge" Margin="0,0,0,8" />
+
+            <CheckBox x:Name="HotkeyCheck" Grid.Row="4" Grid.Column="1" Content="Ctrl+Shift+Space shows/hides MiniBrowser and focuses the address bar" Margin="0,0,0,8" />
+            <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,0,0,14">
                 <CheckBox x:Name="AdBlockCheck" Content="Enable global ad blocking" />
                 <TextBlock Text="Uses request blocking, lightweight EasyList rules, and cosmetic hiding."
                            Foreground="#6B7280"
@@ -57,12 +60,12 @@
                            Margin="0,4,0,0" />
             </StackPanel>
             <CheckBox x:Name="AutoUpdateCheck"
-                      Grid.Row="5"
+                      Grid.Row="6"
                       Grid.Column="1"
                       Content="Check for updates automatically"
                       Margin="0,0,0,8" />
             <CheckBox x:Name="LowMemoryCheck"
-                      Grid.Row="6"
+                      Grid.Row="7"
                       Grid.Column="1"
                       Content="Low memory mode"
                       Margin="0,0,0,14" />
