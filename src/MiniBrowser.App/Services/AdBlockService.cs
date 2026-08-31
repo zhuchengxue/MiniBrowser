@@ -153,7 +153,7 @@ public sealed class AdBlockService
         }
 
         var host = uri.Host;
-        if (MatchesAnyHost(host, whitelist ?? []))
+        if (whitelist is not null && MatchesAnyHost(host, whitelist))
         {
             return false;
         }
@@ -164,7 +164,15 @@ public sealed class AdBlockService
         }
 
         var absolute = uri.AbsoluteUri;
-        return _urlContainsRules.Any(rule => absolute.Contains(rule, StringComparison.OrdinalIgnoreCase));
+        foreach (var rule in _urlContainsRules)
+        {
+            if (absolute.Contains(rule, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public string CreateCosmeticScript()
@@ -173,6 +181,11 @@ public sealed class AdBlockService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(400)
             .ToArray();
+        if (selectors.Length == 0)
+        {
+            return string.Empty;
+        }
+
         var selectorJson = JsonSerializer.Serialize(selectors);
 
         return $$"""
@@ -187,25 +200,6 @@ public sealed class AdBlockService
                 document.documentElement.appendChild(style);
               }
               style.textContent = css;
-
-              const hide = () => {
-                for (const selector of selectors) {
-                  try {
-                    document.querySelectorAll(selector).forEach(node => {
-                      node.style.setProperty("display", "none", "important");
-                      node.style.setProperty("visibility", "hidden", "important");
-                    });
-                  } catch {}
-                }
-              };
-              hide();
-              if (!window.__miniBrowserAdObserver) {
-                window.__miniBrowserAdObserver = new MutationObserver(() => {
-                  clearTimeout(window.__miniBrowserAdTimer);
-                  window.__miniBrowserAdTimer = setTimeout(hide, 80);
-                });
-                window.__miniBrowserAdObserver.observe(document.documentElement, { childList: true, subtree: true });
-              }
             })();
             """;
     }
@@ -255,9 +249,16 @@ public sealed class AdBlockService
 
     private static bool MatchesAnyHost(string host, IEnumerable<string> candidates)
     {
-        return candidates.Select(NormalizeHost)
-            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
-            .Any(candidate => HostMatches(host, candidate));
+        foreach (var item in candidates)
+        {
+            var candidate = NormalizeHost(item);
+            if (!string.IsNullOrWhiteSpace(candidate) && HostMatches(host, candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool MatchesBlockedHost(string host)

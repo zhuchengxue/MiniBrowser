@@ -8,6 +8,8 @@ var tests = new (string Name, Action Body)[]
     ("AdBlock blocks EasyList hosts and URL rules", AdBlockBlocksEasyListRules),
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
+    ("Edge auto hide geometry keeps one visible strip", EdgeAutoHideGeometryKeepsOneVisibleStrip),
+    ("Edge auto hide reveal only arms on visible strip", EdgeAutoHideRevealOnlyArmsOnVisibleStrip),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
     ("Settings normalizes Google NCR startup URLs", SettingsNormalizesGoogleNcrStartupUrls),
     ("Settings load migrates broken Google startup URL", SettingsLoadMigratesBrokenGoogleStartupUrl),
@@ -90,7 +92,47 @@ static void CosmeticScriptIncludesSelectors()
     var service = CreateAdBlockService();
     var script = service.CreateCosmeticScript();
     Assert(script.Contains(".sponsored-card", StringComparison.Ordinal), "cosmetic selector should be injected");
-    Assert(script.Contains("MutationObserver", StringComparison.Ordinal), "cosmetic script should observe DOM changes");
+    Assert(script.Contains("style.textContent", StringComparison.Ordinal), "cosmetic selectors should be applied through CSS");
+    Assert(!script.Contains("MutationObserver", StringComparison.Ordinal), "cosmetic script should avoid DOM observers");
+}
+
+static void EdgeAutoHideGeometryKeepsOneVisibleStrip()
+{
+    var restore = new EdgeAutoHideService.NativeRect { Left = 100, Top = 80, Right = 500, Bottom = 880 };
+    var strip = (int)EdgeAutoHideService.VisibleStrip;
+
+    var left = EdgeAutoHideService.GetHiddenBounds(restore, EdgeAutoHideService.EdgeSide.Left);
+    Assert(left.Right == restore.Left + strip, "left hidden window should leave only the right strip visible");
+    Assert(left.Width == restore.Width, "left hidden window should preserve width");
+
+    var right = EdgeAutoHideService.GetHiddenBounds(restore, EdgeAutoHideService.EdgeSide.Right);
+    Assert(right.Left == restore.Right - strip, "right hidden window should leave only the left strip visible");
+    Assert(right.Width == restore.Width, "right hidden window should preserve width");
+
+    var top = EdgeAutoHideService.GetHiddenBounds(restore, EdgeAutoHideService.EdgeSide.Top);
+    Assert(top.Bottom == restore.Top + strip, "top hidden window should leave only the bottom strip visible");
+    Assert(top.Height == restore.Height, "top hidden window should preserve height");
+
+    var bottom = EdgeAutoHideService.GetHiddenBounds(restore, EdgeAutoHideService.EdgeSide.Bottom);
+    Assert(bottom.Top == restore.Bottom - strip, "bottom hidden window should leave only the top strip visible");
+    Assert(bottom.Height == restore.Height, "bottom hidden window should preserve height");
+}
+
+static void EdgeAutoHideRevealOnlyArmsOnVisibleStrip()
+{
+    var rect = new EdgeAutoHideService.NativeRect { Left = 496, Top = 80, Right = 896, Bottom = 880 };
+    Assert(
+        EdgeAutoHideService.IsPointOnVisibleStrip(
+            rect,
+            new EdgeAutoHideService.NativePoint { X = 498, Y = 300 },
+            EdgeAutoHideService.EdgeSide.Right),
+        "right hidden window should reveal from the visible left strip");
+    Assert(
+        !EdgeAutoHideService.IsPointOnVisibleStrip(
+            rect,
+            new EdgeAutoHideService.NativePoint { X = 880, Y = 300 },
+            EdgeAutoHideService.EdgeSide.Right),
+        "right hidden window should not reveal from off-screen body coordinates");
 }
 
 static void SettingsNormalizesSiteProfiles()

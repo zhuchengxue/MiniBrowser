@@ -7,8 +7,8 @@ namespace MiniBrowser.App.Services;
 
 public sealed class EdgeAutoHideService : IDisposable
 {
-    private const double SnapMargin = 10d;
-    private const double VisibleStrip = 4d;
+    internal const double SnapMargin = 10d;
+    internal const double VisibleStrip = 4d;
 
     private readonly Window _window;
     private readonly Func<bool> _isEnabled;
@@ -140,27 +140,7 @@ public sealed class EdgeAutoHideService : IDisposable
             return false;
         }
 
-        const int padding = 3;
-        return _hiddenSide switch
-        {
-            EdgeSide.Left => point.X >= rect.Right - VisibleStrip - padding &&
-                             point.X <= rect.Right + padding &&
-                             point.Y >= rect.Top - padding &&
-                             point.Y <= rect.Bottom + padding,
-            EdgeSide.Right => point.X >= rect.Left - padding &&
-                              point.X <= rect.Left + VisibleStrip + padding &&
-                              point.Y >= rect.Top - padding &&
-                              point.Y <= rect.Bottom + padding,
-            EdgeSide.Top => point.X >= rect.Left - padding &&
-                            point.X <= rect.Right + padding &&
-                            point.Y >= rect.Bottom - VisibleStrip - padding &&
-                            point.Y <= rect.Bottom + padding,
-            EdgeSide.Bottom => point.X >= rect.Left - padding &&
-                               point.X <= rect.Right + padding &&
-                               point.Y >= rect.Top - padding &&
-                               point.Y <= rect.Top + VisibleStrip + padding,
-            _ => false
-        };
+        return IsPointOnVisibleStrip(rect, point, _hiddenSide);
     }
 
     private bool IsAnyContextMenuOpen()
@@ -218,28 +198,57 @@ public sealed class EdgeAutoHideService : IDisposable
         _candidateEdge = EdgeSide.None;
         _ignoreRevealUntilUtc = DateTime.UtcNow.AddMilliseconds(500);
 
-        var hiddenBounds = _restoreBounds;
+        MoveWindow(handle, GetHiddenBounds(_restoreBounds, side));
+    }
 
+    internal static NativeRect GetHiddenBounds(NativeRect restoreBounds, EdgeSide side)
+    {
+        var hiddenBounds = restoreBounds;
         switch (side)
         {
             case EdgeSide.Left:
-                hiddenBounds.Offset((int)(-_restoreBounds.Width + VisibleStrip), 0);
+                hiddenBounds.Offset((int)(-restoreBounds.Width + VisibleStrip), 0);
                 break;
             case EdgeSide.Right:
-                hiddenBounds.Offset((int)(_restoreBounds.Width - VisibleStrip), 0);
+                hiddenBounds.Offset((int)(restoreBounds.Width - VisibleStrip), 0);
                 break;
             case EdgeSide.Top:
-                hiddenBounds.Offset(0, (int)(-_restoreBounds.Height + VisibleStrip));
+                hiddenBounds.Offset(0, (int)(-restoreBounds.Height + VisibleStrip));
                 break;
             case EdgeSide.Bottom:
-                hiddenBounds.Offset(0, (int)(_restoreBounds.Height - VisibleStrip));
+                hiddenBounds.Offset(0, (int)(restoreBounds.Height - VisibleStrip));
                 break;
         }
 
-        MoveWindow(handle, hiddenBounds);
+        return hiddenBounds;
     }
 
-    private enum EdgeSide
+    internal static bool IsPointOnVisibleStrip(NativeRect rect, NativePoint point, EdgeSide side)
+    {
+        const int padding = 3;
+        return side switch
+        {
+            EdgeSide.Left => point.X >= rect.Right - VisibleStrip - padding &&
+                             point.X <= rect.Right + padding &&
+                             point.Y >= rect.Top - padding &&
+                             point.Y <= rect.Bottom + padding,
+            EdgeSide.Right => point.X >= rect.Left - padding &&
+                              point.X <= rect.Left + VisibleStrip + padding &&
+                              point.Y >= rect.Top - padding &&
+                              point.Y <= rect.Bottom + padding,
+            EdgeSide.Top => point.X >= rect.Left - padding &&
+                            point.X <= rect.Right + padding &&
+                            point.Y >= rect.Bottom - VisibleStrip - padding &&
+                            point.Y <= rect.Bottom + padding,
+            EdgeSide.Bottom => point.X >= rect.Left - padding &&
+                               point.X <= rect.Right + padding &&
+                               point.Y >= rect.Top - padding &&
+                               point.Y <= rect.Top + VisibleStrip + padding,
+            _ => false
+        };
+    }
+
+    internal enum EdgeSide
     {
         None,
         Left,
@@ -279,14 +288,14 @@ public sealed class EdgeAutoHideService : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
+    internal struct NativePoint
     {
         public int X;
         public int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    internal struct NativeRect
     {
         public int Left;
         public int Top;
