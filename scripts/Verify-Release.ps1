@@ -1,10 +1,22 @@
 param(
-    [string]$ExpectedTag = "v0.4.9",
+    [string]$ExpectedTag,
     [string]$Owner = "zhuchengxue",
     [string]$Repository = "MiniBrowser"
 )
 
 $ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$appInfoPath = Join-Path $repoRoot "src\MiniBrowser.App\Infrastructure\AppInfo.cs"
+
+if ([string]::IsNullOrWhiteSpace($ExpectedTag)) {
+    $appInfo = Get-Content -LiteralPath $appInfoPath -Raw
+    if ($appInfo -notmatch 'Version\s*=\s*"([^"]+)"') {
+        throw "Could not read MiniBrowser version from $appInfoPath"
+    }
+
+    $ExpectedTag = "v$($Matches[1])"
+}
 
 $headers = @{
     "User-Agent" = "MiniBrowser-Release-Verify"

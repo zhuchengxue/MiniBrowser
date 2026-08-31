@@ -1,6 +1,7 @@
 param(
     [int]$WarmupSeconds = 8,
-    [int]$HideTimeoutSeconds = 6
+    [int]$HideTimeoutSeconds = 6,
+    [switch]$KeepTempOnFailure
 )
 
 $ErrorActionPreference = "Stop"
@@ -95,9 +96,26 @@ function Get-Rect {
     return $rect
 }
 
+function Get-AppLogTail {
+    param([string]$AppDirectory)
+
+    $logPath = Join-Path $AppDirectory "Data\Logs\MiniBrowser.log"
+    if (!(Test-Path -LiteralPath $logPath)) {
+        return "log=missing"
+    }
+
+    $lines = Get-Content -LiteralPath $logPath -Tail 12
+    if (!$lines) {
+        return "log=empty"
+    }
+
+    return "log=" + (($lines -join " | ") -replace "`r|`n", " ")
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("MiniBrowserEdgeTest-" + [Guid]::NewGuid().ToString("N"))
 $tempApp = Join-Path $tempRoot "MiniBrowser-Portable"
 $process = $null
+$testFailed = $false
 $childProcesses = @()
 $originalCursor = New-Object MiniBrowserWin32+Point
 [MiniBrowserWin32]::GetCursorPos([ref]$originalCursor) | Out-Null
@@ -163,6 +181,8 @@ try {
     $flags = 0x0004 -bor 0x0010
 
     [MiniBrowserWin32]::SetWindowPos($handle, [IntPtr]::Zero, $left, $top, $width, $height, $flags) | Out-Null
+    [MiniBrowserWin32]::SetCursorPos($left + [int]($width / 2), $top + 48) | Out-Null
+    Start-Sleep -Milliseconds 700
     [MiniBrowserWin32]::SetCursorPos($work.Left + 50, $work.Top + 50) | Out-Null
 
     $hidden = $false
@@ -180,7 +200,8 @@ try {
 
     if (!$hidden) {
         $rect = Get-Rect -Handle $handle
-        throw "Window did not auto-hide on the right edge. Left=$($rect.Left), expected near $($work.Right - 4)."
+        $logTail = Get-AppLogTail -AppDirectory $tempApp
+        throw "Window did not auto-hide on the right edge. Rect=$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom) Size=$($rect.Width)x$($rect.Height) Work=$($work.Left),$($work.Top),$($work.Right),$($work.Bottom) ExpectedLeftNear=$($work.Right - 4). $logTail"
     }
 
     $samples = @()
@@ -196,10 +217,33 @@ try {
     }
 
     [MiniBrowserWin32]::SetCursorPos($work.Right - 2, $hiddenRect.Top + [Math]::Max(20, [int]($hiddenRect.Height / 2))) | Out-Null
-    Start-Sleep -Seconds 2
-    $revealedRect = Get-Rect -Handle $handle
+    $revealCursor = New-Object MiniBrowserWin32+Point
+    [MiniBrowserWin32]::GetCursorPos([ref]$revealCursor) | Out-Null
+    $revealSamples = @()
+    $revealedRect = $null
+    for ($i = 0; $i -lt 24; $i++) {
+        Start-Sleep -Milliseconds 125
+        $sample = Get-Rect -Handle $handle
+        $revealSamples += $sample
+        if ($sample.Left -le ($work.Right - 120) -and $sample.Right -le ($work.Right + 8)) {
+            $revealedRect = $sample
+            break
+        }
+    }
+
+    if ($null -eq $revealedRect) {
+        $revealedRect = $revealSamples[-1]
+    }
+
     if ($revealedRect.Right -gt ($work.Right + 8) -or $revealedRect.Left -gt ($work.Right - 120)) {
-        throw "Window did not reveal from the visible edge strip. Left=$($revealedRect.Left), Right=$($revealedRect.Right)."
+        $logTail = Get-AppLogTail -AppDirectory $tempApp
+        throw "Window did not reveal from the visible edge strip. Left=$($revealedRect.Left), Right=$($revealedRect.Right), Cursor=$($revealCursor.X),$($revealCursor.Y). $logTail"
+    }
+
+    Start-Sleep -Seconds 1
+    $settledRect = Get-Rect -Handle $handle
+    if ($settledRect.Left -gt ($work.Right - 120)) {
+        throw "Window flickered back to hidden after reveal. RevealedLeft=$($revealedRect.Left), SettledLeft=$($settledRect.Left), Cursor=$($revealCursor.X),$($revealCursor.Y)."
     }
 
     [pscustomobject]@{
@@ -210,6 +254,10 @@ try {
         RevealedLeft = $revealedRect.Left
         RevealedRight = $revealedRect.Right
     }
+}
+catch {
+    $testFailed = $true
+    throw
 }
 finally {
     [MiniBrowserWin32]::SetCursorPos($originalCursor.X, $originalCursor.Y) | Out-Null
@@ -230,7 +278,10 @@ finally {
         }
     }
 
-    if (Test-Path -LiteralPath $tempRoot) {
+    if ($KeepTempOnFailure -and $testFailed) {
+        Write-Warning "Keeping temporary edge test directory: $tempRoot"
+    }
+    elseif (Test-Path -LiteralPath $tempRoot) {
         for ($attempt = 1; $attempt -le 5; $attempt++) {
             try {
                 Remove-Item -LiteralPath $tempRoot -Recurse -Force

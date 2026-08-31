@@ -15,6 +15,18 @@ $publishDir = Join-Path $repoRoot "dist\MiniBrowser-SingleExe"
 $zipPath = Join-Path $repoRoot "dist\MiniBrowser-SingleExe.zip"
 $project = Join-Path $repoRoot "src\MiniBrowser.App\MiniBrowser.App.csproj"
 $nugetConfig = Join-Path $repoRoot "NuGet.Config"
+$appInfoPath = Join-Path $repoRoot "src\MiniBrowser.App\Infrastructure\AppInfo.cs"
+
+function Get-AppVersion {
+    $appInfo = Get-Content -LiteralPath $appInfoPath -Raw
+    if ($appInfo -notmatch 'Version\s*=\s*"([^"]+)"') {
+        throw "Could not read MiniBrowser version from $appInfoPath"
+    }
+
+    return $Matches[1]
+}
+
+$appVersion = Get-AppVersion
 
 Get-Process MiniBrowser.App -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like (Join-Path $publishDir "*") } |
@@ -55,6 +67,9 @@ Set-Content -LiteralPath (Join-Path $publishDir "README.txt") -Encoding UTF8 -Va
 MiniBrowser Single EXE
 ======================
 
+Version:
+  $appVersion
+
 Run:
   MiniBrowser.exe
 
@@ -66,6 +81,13 @@ Portable data is saved beside the executable in:
   Data\WebView2
   Data\Logs
 "@
+
+Set-Content -LiteralPath (Join-Path $publishDir "VERSION.txt") -Value $appVersion -Encoding ASCII
+
+$debugFiles = Get-ChildItem -LiteralPath $publishDir -Recurse -Force -File -Filter "*.pdb"
+if ($debugFiles) {
+    throw "Single EXE publish directory must not include debug symbols: $($debugFiles[0].FullName)"
+}
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force

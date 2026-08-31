@@ -10,7 +10,7 @@ var tests = new (string Name, Action Body)[]
     ("AdBlock replaces custom hosts without rebuilding service", AdBlockReplacesCustomHostsWithoutRebuildingService),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
     ("Edge auto hide geometry keeps one visible strip", EdgeAutoHideGeometryKeepsOneVisibleStrip),
-    ("Edge auto hide reveal only arms on visible strip", EdgeAutoHideRevealOnlyArmsOnVisibleStrip),
+    ("Edge auto hide reveal only reacts on visible strip", EdgeAutoHideRevealOnlyReactsOnVisibleStrip),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
     ("Settings normalizes Google NCR startup URLs", SettingsNormalizesGoogleNcrStartupUrls),
     ("Settings load migrates broken Google startup URL", SettingsLoadMigratesBrokenGoogleStartupUrl),
@@ -131,7 +131,7 @@ static void EdgeAutoHideGeometryKeepsOneVisibleStrip()
     Assert(bottom.Height == restore.Height, "bottom hidden window should preserve height");
 }
 
-static void EdgeAutoHideRevealOnlyArmsOnVisibleStrip()
+static void EdgeAutoHideRevealOnlyReactsOnVisibleStrip()
 {
     var rect = new EdgeAutoHideService.NativeRect { Left = 496, Top = 80, Right = 896, Bottom = 880 };
     Assert(

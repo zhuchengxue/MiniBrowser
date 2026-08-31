@@ -38,6 +38,17 @@ function New-Shortcut {
 }
 
 $sourceDir = Resolve-SourceDir
+$versionPath = Join-Path $sourceDir "VERSION.txt"
+$appVersion = if (Test-Path -LiteralPath $versionPath) {
+    (Get-Content -LiteralPath $versionPath -Raw).Trim()
+} else {
+    "0.0.0"
+}
+
+if ([string]::IsNullOrWhiteSpace($appVersion)) {
+    throw "MiniBrowser version file is empty: $versionPath"
+}
+
 $installDir = [System.IO.Path]::GetFullPath($InstallDir)
 $exePath = Join-Path $installDir "MiniBrowser.App.exe"
 $startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\MiniBrowser"
@@ -74,7 +85,7 @@ if (!$NoDesktopShortcut) {
 
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name "DisplayName" -Value "MiniBrowser"
-Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value "0.4.9"
+Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value $appVersion
 Set-ItemProperty -Path $uninstallKey -Name "Publisher" -Value "zhuchengxue"
 Set-ItemProperty -Path $uninstallKey -Name "InstallLocation" -Value $installDir
 Set-ItemProperty -Path $uninstallKey -Name "DisplayIcon" -Value $exePath

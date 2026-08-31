@@ -15,6 +15,18 @@ $publishDir = Join-Path $repoRoot "dist\MiniBrowser-Portable"
 $zipPath = Join-Path $repoRoot "dist\MiniBrowser-Portable.zip"
 $project = Join-Path $repoRoot "src\MiniBrowser.App\MiniBrowser.App.csproj"
 $nugetConfig = Join-Path $repoRoot "NuGet.Config"
+$appInfoPath = Join-Path $repoRoot "src\MiniBrowser.App\Infrastructure\AppInfo.cs"
+
+function Get-AppVersion {
+    $appInfo = Get-Content -LiteralPath $appInfoPath -Raw
+    if ($appInfo -notmatch 'Version\s*=\s*"([^"]+)"') {
+        throw "Could not read MiniBrowser version from $appInfoPath"
+    }
+
+    return $Matches[1]
+}
+
+$appVersion = Get-AppVersion
 
 Get-Process MiniBrowser.App -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like (Join-Path $publishDir "*") } |
@@ -71,7 +83,7 @@ MiniBrowser Portable
 ====================
 
 Version:
-  0.4.9
+  $appVersion
 
 Run:
   MiniBrowser.cmd
@@ -104,7 +116,7 @@ Behavior:
 "@
 
 Set-Content -LiteralPath (Join-Path $publishDir "README.txt") -Value $readme -Encoding UTF8
-Set-Content -LiteralPath (Join-Path $publishDir "VERSION.txt") -Value "0.4.9" -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $publishDir "VERSION.txt") -Value $appVersion -Encoding ASCII
 Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.ps1") -Destination (Join-Path $publishDir "Install-MiniBrowser.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.cmd") -Destination (Join-Path $publishDir "Install-MiniBrowser.cmd") -Force
 

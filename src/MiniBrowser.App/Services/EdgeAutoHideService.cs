@@ -1,28 +1,29 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Threading;
 
 namespace MiniBrowser.App.Services;
 
 public sealed class EdgeAutoHideService : IDisposable
 {
-    internal const double SnapMargin = 10d;
+    internal const double SnapMargin = 32d;
     internal const double VisibleStrip = 4d;
 
     private readonly Window _window;
     private readonly Func<bool> _isEnabled;
     private readonly Action? _hidden;
     private readonly Action? _revealed;
-    private readonly DispatcherTimer _timer;
+    private readonly object _sync = new();
+    private readonly System.Windows.Forms.Timer _timer;
+    private System.Threading.Timer? _revealTimer;
+    private IntPtr _handle;
     private bool _isHidden;
-    private bool _revealArmed;
+    private bool _transitioning;
+    private bool _autoHideArmed;
     private NativeRect _restoreBounds;
+    private System.Drawing.Rectangle _hiddenWorkArea;
     private EdgeSide _hiddenSide;
-    private DateTime _ignoreHideUntilUtc;
-    private DateTime _ignoreRevealUntilUtc;
-    private EdgeSide _candidateEdge;
-    private DateTime _candidateSinceUtc;
+    private DateTime _lastAutoActionUtc = DateTime.MinValue;
 
     public EdgeAutoHideService(Window window, Func<bool> isEnabled, Action? hidden = null, Action? revealed = null)
     {
@@ -30,10 +31,7 @@ public sealed class EdgeAutoHideService : IDisposable
         _isEnabled = isEnabled;
         _hidden = hidden;
         _revealed = revealed;
-        _timer = new DispatcherTimer(DispatcherPriority.Background, window.Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
+        _timer = new System.Windows.Forms.Timer { Interval = 150 };
         _timer.Tick += Timer_Tick;
     }
 
@@ -41,32 +39,45 @@ public sealed class EdgeAutoHideService : IDisposable
 
     public void Start()
     {
+        if (_timer.Enabled)
+        {
+            return;
+        }
+
+        _handle = new WindowInteropHelper(_window).Handle;
+        _lastAutoActionUtc = DateTime.UtcNow;
         _timer.Start();
     }
 
     public void Stop()
     {
         _timer.Stop();
+        StopRevealTimer();
     }
 
     public void Reveal()
     {
-        if (!_isHidden)
+        lock (_sync)
         {
-            return;
+            if (!_isHidden)
+            {
+                return;
+            }
+
+            var handle = CurrentHandle();
+            if (handle == IntPtr.Zero || !MoveWindow(handle, _restoreBounds))
+            {
+                return;
+            }
+
+            _isHidden = false;
+            _hiddenSide = EdgeSide.None;
+            _hiddenWorkArea = System.Drawing.Rectangle.Empty;
+            _autoHideArmed = IsCursorOverBounds(_restoreBounds);
+            _lastAutoActionUtc = DateTime.UtcNow;
+            StopRevealTimer();
         }
 
-        var handle = new WindowInteropHelper(_window).Handle;
-        if (handle != IntPtr.Zero)
-        {
-            MoveWindow(handle, _restoreBounds);
-        }
-
-        _isHidden = false;
-        _hiddenSide = EdgeSide.None;
-        _revealArmed = false;
-        _candidateEdge = EdgeSide.None;
-        _ignoreHideUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
         _revealed?.Invoke();
     }
 
@@ -78,66 +89,67 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private void Timer_Tick(object? sender, EventArgs e)
     {
-        if (!_isEnabled() ||
-            !_window.IsVisible ||
-            _window.WindowState != WindowState.Normal ||
-            IsAnyContextMenuOpen())
+        if (!Monitor.TryEnter(_sync))
         {
             return;
         }
 
-        if (_isHidden)
+        try
         {
-            var now = DateTime.UtcNow;
-            var cursorOnStrip = IsCursorOnVisibleStrip();
-            if (!cursorOnStrip)
+            var handle = CurrentHandle();
+            if (!_isEnabled() ||
+                handle == IntPtr.Zero ||
+                !IsWindowVisible(handle) ||
+                IsIconic(handle) ||
+                IsAnyContextMenuOpen())
             {
-                _revealArmed = true;
                 return;
             }
 
-            if (_revealArmed && now >= _ignoreRevealUntilUtc)
+            if (_isHidden)
             {
-                Reveal();
+                if (PointerInCollapsedTrigger())
+                {
+                    RevealFromTimer();
+                }
+
+                return;
             }
 
-            return;
-        }
+            if (!_autoHideArmed)
+            {
+                if (IsCursorOverWindow() || GetSnappedEdge() != EdgeSide.None)
+                {
+                    _autoHideArmed = true;
+                }
 
-        if (IsCursorOverWindow())
-        {
-            return;
-        }
+                return;
+            }
 
-        if (DateTime.UtcNow < _ignoreHideUntilUtc)
-        {
-            return;
-        }
+            var side = GetSnappedEdge();
+            if (side == EdgeSide.Top && PointerNearTopTrigger())
+            {
+                return;
+            }
 
-        var side = GetSnappedEdge();
-        if (side == EdgeSide.None)
-        {
-            _candidateEdge = EdgeSide.None;
-            return;
+            if (!IsCursorOverWindow() && side != EdgeSide.None)
+            {
+                Hide(side);
+            }
         }
-
-        if (_candidateEdge != side)
+        catch (Exception ex)
         {
-            _candidateEdge = side;
-            _candidateSinceUtc = DateTime.UtcNow;
-            return;
+            MiniBrowser.App.Infrastructure.AppLogger.Error(ex, "Edge auto-hide timer failed.");
         }
-
-        if (DateTime.UtcNow - _candidateSinceUtc >= TimeSpan.FromMilliseconds(500))
+        finally
         {
-            _candidateEdge = EdgeSide.None;
-            Hide(side);
+            Monitor.Exit(_sync);
         }
     }
 
-    private bool IsCursorOnVisibleStrip()
+    private bool PointerNearTopTrigger()
     {
-        var handle = new WindowInteropHelper(_window).Handle;
+        var handle = CurrentHandle();
         if (handle == IntPtr.Zero ||
             !GetWindowRect(handle, out var rect) ||
             !GetCursorPos(out var point))
@@ -145,20 +157,59 @@ public sealed class EdgeAutoHideService : IDisposable
             return false;
         }
 
-        return IsPointOnVisibleStrip(rect, point, _hiddenSide);
+        var work = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        return point.Y >= work.Top &&
+               point.Y <= work.Top + 18 &&
+               point.X >= rect.Left &&
+               point.X <= rect.Right;
+    }
+
+    private bool PointerInCollapsedTrigger()
+    {
+        if (_hiddenWorkArea.IsEmpty || !GetCursorPos(out var point))
+        {
+            return false;
+        }
+
+        const int trigger = 12;
+        return _hiddenSide switch
+        {
+            EdgeSide.Right => point.X >= _hiddenWorkArea.Right - trigger &&
+                              point.X < _hiddenWorkArea.Right &&
+                              point.Y >= _restoreBounds.Top &&
+                              point.Y <= _restoreBounds.Bottom,
+            EdgeSide.Left => point.X >= _hiddenWorkArea.Left &&
+                             point.X <= _hiddenWorkArea.Left + trigger &&
+                             point.Y >= _restoreBounds.Top &&
+                             point.Y <= _restoreBounds.Bottom,
+            EdgeSide.Top => point.Y >= _hiddenWorkArea.Top &&
+                            point.Y <= _hiddenWorkArea.Top + trigger &&
+                            point.X >= _restoreBounds.Left &&
+                            point.X <= _restoreBounds.Right,
+            EdgeSide.Bottom => point.Y >= _hiddenWorkArea.Bottom - trigger &&
+                               point.Y < _hiddenWorkArea.Bottom &&
+                               point.X >= _restoreBounds.Left &&
+                               point.X <= _restoreBounds.Right,
+            _ => false
+        };
     }
 
     private bool IsCursorOverWindow()
     {
-        var handle = new WindowInteropHelper(_window).Handle;
+        var handle = CurrentHandle();
         if (handle == IntPtr.Zero ||
-            !GetWindowRect(handle, out var rect) ||
-            !GetCursorPos(out var point))
+            !GetWindowRect(handle, out var rect))
         {
             return false;
         }
 
-        return point.X >= rect.Left &&
+        return IsCursorOverBounds(rect);
+    }
+
+    private bool IsCursorOverBounds(NativeRect rect)
+    {
+        return GetCursorPos(out var point) &&
+               point.X >= rect.Left &&
                point.X <= rect.Right &&
                point.Y >= rect.Top &&
                point.Y <= rect.Bottom;
@@ -166,12 +217,12 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private bool IsAnyContextMenuOpen()
     {
-        return _window.ContextMenu?.IsOpen == true;
+        return _window.Dispatcher.CheckAccess() && _window.ContextMenu?.IsOpen == true;
     }
 
     private EdgeSide GetSnappedEdge()
     {
-        var handle = new WindowInteropHelper(_window).Handle;
+        var handle = CurrentHandle();
         if (handle == IntPtr.Zero || !GetWindowRect(handle, out var nativeRect))
         {
             return EdgeSide.None;
@@ -207,20 +258,115 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private void Hide(EdgeSide side)
     {
-        var handle = new WindowInteropHelper(_window).Handle;
+        if (_isHidden || _transitioning ||
+            DateTime.UtcNow - _lastAutoActionUtc < TimeSpan.FromMilliseconds(900))
+        {
+            return;
+        }
+
+        var handle = CurrentHandle();
         if (handle == IntPtr.Zero || !GetWindowRect(handle, out _restoreBounds))
         {
             return;
         }
 
+        _hiddenWorkArea = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        _restoreBounds = AlignRestoreBoundsToEdge(_restoreBounds, side, _hiddenWorkArea);
+        if (!MoveWindow(handle, GetHiddenBoundsForWorkArea(_restoreBounds, side, _hiddenWorkArea)))
+        {
+            return;
+        }
+
+        _transitioning = true;
         _isHidden = true;
         _hiddenSide = side;
-        _revealArmed = false;
-        _candidateEdge = EdgeSide.None;
-        _ignoreRevealUntilUtc = DateTime.UtcNow.AddMilliseconds(500);
-
-        MoveWindow(handle, GetHiddenBounds(_restoreBounds, side));
+        _lastAutoActionUtc = DateTime.UtcNow;
+        _transitioning = false;
+        StartRevealTimer();
         _hidden?.Invoke();
+    }
+
+    private void RevealFromTimer()
+    {
+        if (!_isHidden || _transitioning ||
+            DateTime.UtcNow - _lastAutoActionUtc < TimeSpan.FromMilliseconds(180))
+        {
+            return;
+        }
+
+        var handle = CurrentHandle();
+        _transitioning = true;
+        if (handle == IntPtr.Zero || !MoveWindow(handle, _restoreBounds))
+        {
+            _transitioning = false;
+            return;
+        }
+
+        _isHidden = false;
+        _hiddenSide = EdgeSide.None;
+        _hiddenWorkArea = System.Drawing.Rectangle.Empty;
+        _autoHideArmed = IsCursorOverBounds(_restoreBounds);
+        _lastAutoActionUtc = DateTime.UtcNow;
+        _transitioning = false;
+        StopRevealTimer();
+        _revealed?.Invoke();
+    }
+
+    private void StartRevealTimer()
+    {
+        if (_revealTimer is not null)
+        {
+            return;
+        }
+
+        _revealTimer = new System.Threading.Timer(RevealTimer_Tick, null, TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(80));
+    }
+
+    private void StopRevealTimer()
+    {
+        var timer = Interlocked.Exchange(ref _revealTimer, null);
+        timer?.Dispose();
+    }
+
+    private void RevealTimer_Tick(object? state)
+    {
+        if (!Monitor.TryEnter(_sync))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_isHidden || _transitioning || !PointerInCollapsedTrigger())
+            {
+                return;
+            }
+
+            RevealFromTimer();
+        }
+        catch (Exception ex)
+        {
+            MiniBrowser.App.Infrastructure.AppLogger.Error(ex, "Edge auto-hide reveal timer failed.");
+        }
+        finally
+        {
+            Monitor.Exit(_sync);
+        }
+    }
+
+    private IntPtr CurrentHandle()
+    {
+        if (_handle != IntPtr.Zero)
+        {
+            return _handle;
+        }
+
+        if (_window.Dispatcher.CheckAccess())
+        {
+            _handle = new WindowInteropHelper(_window).Handle;
+        }
+
+        return _handle;
     }
 
     internal static NativeRect GetHiddenBounds(NativeRect restoreBounds, EdgeSide side)
@@ -239,6 +385,63 @@ public sealed class EdgeAutoHideService : IDisposable
                 break;
             case EdgeSide.Bottom:
                 hiddenBounds.Offset(0, (int)(restoreBounds.Height - VisibleStrip));
+                break;
+        }
+
+        return hiddenBounds;
+    }
+
+    private static NativeRect AlignRestoreBoundsToEdge(
+        NativeRect restoreBounds,
+        EdgeSide side,
+        System.Drawing.Rectangle work)
+    {
+        var alignedBounds = restoreBounds;
+
+        switch (side)
+        {
+            case EdgeSide.Left:
+                alignedBounds.Offset(work.Left - restoreBounds.Left, 0);
+                break;
+            case EdgeSide.Right:
+                alignedBounds.Offset(work.Right - restoreBounds.Right, 0);
+                break;
+            case EdgeSide.Top:
+                alignedBounds.Offset(0, work.Top - restoreBounds.Top);
+                break;
+            case EdgeSide.Bottom:
+                alignedBounds.Offset(0, work.Bottom - restoreBounds.Bottom);
+                break;
+        }
+
+        return alignedBounds;
+    }
+
+    private static NativeRect GetHiddenBoundsForWorkArea(
+        NativeRect restoreBounds,
+        EdgeSide side,
+        System.Drawing.Rectangle work)
+    {
+        var hiddenBounds = restoreBounds;
+        var strip = (int)VisibleStrip;
+
+        switch (side)
+        {
+            case EdgeSide.Left:
+                hiddenBounds.Left = work.Left + strip - restoreBounds.Width;
+                hiddenBounds.Right = work.Left + strip;
+                break;
+            case EdgeSide.Right:
+                hiddenBounds.Left = work.Right - strip;
+                hiddenBounds.Right = work.Right - strip + restoreBounds.Width;
+                break;
+            case EdgeSide.Top:
+                hiddenBounds.Top = work.Top + strip - restoreBounds.Height;
+                hiddenBounds.Bottom = work.Top + strip;
+                break;
+            case EdgeSide.Bottom:
+                hiddenBounds.Top = work.Bottom - strip;
+                hiddenBounds.Bottom = work.Bottom - strip + restoreBounds.Height;
                 break;
         }
 
@@ -283,6 +486,12 @@ public sealed class EdgeAutoHideService : IDisposable
     private static extern bool GetCursorPos(out NativePoint point);
 
     [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
 
     [DllImport("user32.dll")]
@@ -295,11 +504,11 @@ public sealed class EdgeAutoHideService : IDisposable
         int cy,
         uint uFlags);
 
-    private static void MoveWindow(IntPtr handle, NativeRect bounds)
+    private static bool MoveWindow(IntPtr handle, NativeRect bounds)
     {
         const uint noZOrder = 0x0004;
         const uint noActivate = 0x0010;
-        SetWindowPos(
+        return SetWindowPos(
             handle,
             IntPtr.Zero,
             bounds.Left,

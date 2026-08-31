@@ -73,7 +73,7 @@ public partial class MainWindow : Window
         _edgeAutoHideService = new EdgeAutoHideService(
             this,
             () => _settings.EdgeAutoHideEnabled,
-            SuspendBrowserWhenHidden,
+            hidden: null,
             ResumeBrowserIfNeeded);
 
         Width = _profile.Width;
@@ -102,7 +102,10 @@ public partial class MainWindow : Window
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Browser.PreviewKeyDown += Browser_KeyDown;
         Browser.KeyDown += Browser_KeyDown;
+        MouseEnter += (_, _) => _edgeAutoHideService.Reveal();
+        MouseMove += (_, _) => _edgeAutoHideService.Reveal();
         SourceInitialized += MainWindow_SourceInitialized;
+        SourceInitialized += (_, _) => _edgeAutoHideService.Start();
         if (enableHotkey && _settings.GlobalHotkeyEnabled)
         {
             SourceInitialized += (_, _) =>
@@ -169,7 +172,6 @@ public partial class MainWindow : Window
             await Browser.EnsureCoreWebView2Async(environment);
             await ConfigureBrowserAsync();
             Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
-            _edgeAutoHideService.Start();
             ScheduleStartupUpdateCheck();
         }
         catch (Exception ex)
@@ -286,7 +288,7 @@ public partial class MainWindow : Window
     private async void SuspendBrowserWhenHidden()
     {
         _suspendRequested = true;
-        if (_browserSuspended || _suspendInProgress || Browser.CoreWebView2 is null)
+        if (_isReallyClosing || _browserSuspended || _suspendInProgress || Browser.CoreWebView2 is null)
         {
             return;
         }
@@ -301,6 +303,10 @@ public partial class MainWindow : Window
                 _browserSuspended = false;
             }
         }
+        catch (Exception ex) when (IsDisposedWebViewException(ex))
+        {
+            _browserSuspended = false;
+        }
         catch (Exception ex)
         {
             AppLogger.Error(ex, "Failed to suspend WebView2.");
@@ -314,7 +320,7 @@ public partial class MainWindow : Window
     private void ResumeBrowserIfNeeded()
     {
         _suspendRequested = false;
-        if (!_browserSuspended || Browser.CoreWebView2 is null)
+        if (_isReallyClosing || !_browserSuspended || Browser.CoreWebView2 is null)
         {
             return;
         }
@@ -324,10 +330,20 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.Resume();
             _browserSuspended = false;
         }
+        catch (Exception ex) when (IsDisposedWebViewException(ex))
+        {
+            _browserSuspended = false;
+        }
         catch (Exception ex)
         {
             AppLogger.Error(ex, "Failed to resume WebView2.");
         }
+    }
+
+    private static bool IsDisposedWebViewException(Exception ex)
+    {
+        return ex is InvalidOperationException &&
+               ex.Message.Contains("disposed", StringComparison.OrdinalIgnoreCase);
     }
 
     private void Navigate(string raw)

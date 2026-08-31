@@ -142,7 +142,7 @@ When a newer release contains `MiniBrowser-Portable.zip`, MiniBrowser downloads 
 To verify that a GitHub Release is ready for automatic updates:
 
 ```powershell
-.\scripts\Verify-Release.ps1 -ExpectedTag v0.4.9
+.\scripts\Verify-Release.ps1
 ```
 
 ## Site Profiles
