@@ -104,7 +104,7 @@ public sealed class EdgeAutoHideService : IDisposable
             return;
         }
 
-        if (_window.IsMouseOver)
+        if (IsCursorOverWindow())
         {
             return;
         }
@@ -146,6 +146,22 @@ public sealed class EdgeAutoHideService : IDisposable
         }
 
         return IsPointOnVisibleStrip(rect, point, _hiddenSide);
+    }
+
+    private bool IsCursorOverWindow()
+    {
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle == IntPtr.Zero ||
+            !GetWindowRect(handle, out var rect) ||
+            !GetCursorPos(out var point))
+        {
+            return false;
+        }
+
+        return point.X >= rect.Left &&
+               point.X <= rect.Right &&
+               point.Y >= rect.Top &&
+               point.Y <= rect.Bottom;
     }
 
     private bool IsAnyContextMenuOpen()
