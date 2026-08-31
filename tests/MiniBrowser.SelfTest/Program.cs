@@ -9,6 +9,7 @@ var tests = new (string Name, Action Body)[]
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
     ("AdBlock replaces custom hosts without rebuilding service", AdBlockReplacesCustomHostsWithoutRebuildingService),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
+    ("Cosmetic script bypasses verification hosts", CosmeticScriptBypassesVerificationHosts),
     ("Edge auto hide geometry keeps one visible strip", EdgeAutoHideGeometryKeepsOneVisibleStrip),
     ("Edge auto hide reveal only reacts on visible strip", EdgeAutoHideRevealOnlyReactsOnVisibleStrip),
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
@@ -17,6 +18,9 @@ var tests = new (string Name, Action Body)[]
     ("Settings skips identical repeated saves", SettingsSkipsIdenticalRepeatedSaves),
     ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
     ("Settings defaults popup position to bottom right", SettingsDefaultsPopupPositionToBottomRight),
+    ("Settings defaults to desktop compatibility mode", SettingsDefaultsToDesktopCompatibilityMode),
+    ("Settings migrates legacy low memory mode", SettingsMigratesLegacyLowMemoryMode),
+    ("Compatibility policy bypasses verification hosts", CompatibilityPolicyBypassesVerificationHosts),
     ("Settings enables edge auto hide by default", SettingsEnablesEdgeAutoHideByDefault),
     ("Settings disables startup update checks by default", SettingsDisablesStartupUpdateChecksByDefault),
     ("Update parser finds newer portable release", UpdateParserFindsNewerPortableRelease),
@@ -109,6 +113,14 @@ static void CosmeticScriptIncludesSelectors()
     Assert(!script.Contains("MutationObserver", StringComparison.Ordinal), "cosmetic script should avoid DOM observers");
 }
 
+static void CosmeticScriptBypassesVerificationHosts()
+{
+    var service = CreateAdBlockService();
+    var script = service.CreateCosmeticScript(BrowserCompatibilityPolicy.AdBlockBypassHosts);
+    Assert(script.Contains("google.com", StringComparison.Ordinal), "cosmetic script should include compatibility hosts");
+    Assert(script.Contains("host.endsWith", StringComparison.Ordinal), "cosmetic script should bypass compatibility subdomains");
+}
+
 static void EdgeAutoHideGeometryKeepsOneVisibleStrip()
 {
     var restore = new EdgeAutoHideService.NativeRect { Left = 100, Top = 80, Right = 500, Bottom = 880 };
@@ -187,6 +199,35 @@ static void SettingsDefaultsToGoogleSearch()
     service.Save(settings);
     var loaded = service.Load();
     Assert(loaded.SearchEngineUrl == "https://www.google.com/search?q={query}", "invalid search template should fall back to Google");
+}
+
+static void SettingsDefaultsToDesktopCompatibilityMode()
+{
+    var settings = new AppSettings();
+    Assert(!settings.MobileMode, "new windows should use the native desktop User-Agent by default");
+    Assert(!settings.LowMemoryMode, "low-memory browser flags should be disabled by default");
+    Assert(!new WindowProfile().MobileMode, "new window profiles should use desktop mode by default");
+}
+
+static void SettingsMigratesLegacyLowMemoryMode()
+{
+    var settings = new AppSettings { SettingsVersion = 0, LowMemoryMode = true };
+    var service = new SettingsService();
+    service.Save(settings);
+    var loaded = service.Load();
+    Assert(loaded.SettingsVersion == 3, "legacy settings should be upgraded");
+    Assert(!loaded.LowMemoryMode, "legacy low-memory flags should be disabled during migration");
+    Assert(loaded.CompatibilityCacheResetPending, "legacy browser cache should be reset once after upgrading");
+}
+
+static void CompatibilityPolicyBypassesVerificationHosts()
+{
+    Assert(BrowserCompatibilityPolicy.BypassAdBlockForHost("www.google.com"), "Google should bypass ad blocking");
+    Assert(BrowserCompatibilityPolicy.BypassAdBlockForHost("challenges.cloudflare.com"), "Cloudflare challenges should bypass ad blocking");
+    Assert(
+        BrowserCompatibilityPolicy.BypassAdBlockForRequest("www.google.com", "doubleclick.net"),
+        "all third-party requests on a verification-sensitive page should bypass ad blocking");
+    Assert(!BrowserCompatibilityPolicy.BypassAdBlockForHost("ads.example.com"), "unrelated hosts should keep ad blocking");
 }
 
 static void SettingsNormalizesGoogleNcrStartupUrls()

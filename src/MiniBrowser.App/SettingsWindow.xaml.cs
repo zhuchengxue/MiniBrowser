@@ -22,7 +22,6 @@ public partial class SettingsWindow : Window
         HotkeyCheck.IsChecked = _settings.GlobalHotkeyEnabled;
         AdBlockCheck.IsChecked = _settings.AdBlockEnabled;
         AutoUpdateCheck.IsChecked = _settings.AutoCheckUpdates;
-        LowMemoryCheck.IsChecked = _settings.LowMemoryMode;
         QuickSitesBox.Text = string.Join(Environment.NewLine, _settings.QuickSites.Select(site => $"{site.Name}|{site.Url}"));
         WhitelistBox.Text = string.Join(Environment.NewLine, _settings.AdBlockWhitelist);
         SiteProfilesBox.Text = string.Join(Environment.NewLine, _settings.SiteProfiles.Select(FormatSiteProfile));
@@ -38,7 +37,6 @@ public partial class SettingsWindow : Window
         _settings.GlobalHotkeyEnabled = HotkeyCheck.IsChecked == true;
         _settings.AdBlockEnabled = AdBlockCheck.IsChecked == true;
         _settings.AutoCheckUpdates = AutoUpdateCheck.IsChecked == true;
-        _settings.LowMemoryMode = LowMemoryCheck.IsChecked == true;
         _settings.QuickSites = ParseSites(QuickSitesBox.Text).ToList();
         _settings.AdBlockWhitelist = ParseLines(WhitelistBox.Text).ToList();
         _settings.SiteProfiles = ParseSiteProfiles(SiteProfilesBox.Text).ToList();

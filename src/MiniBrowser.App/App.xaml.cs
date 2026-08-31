@@ -33,7 +33,7 @@ public partial class App : System.Windows.Application
         _settings = _settingsService.Load();
         _adBlockService = new AdBlockService(_settings.CustomBlockedHosts);
         _adBlockService.LoadEasyListLite(RuntimePaths.EasyListLitePath);
-        _cosmeticScript = _adBlockService.CreateCosmeticScript();
+        _cosmeticScript = _adBlockService.CreateCosmeticScript(BrowserCompatibilityPolicy.AdBlockBypassHosts);
         if (_settings.Windows.Count == 0)
         {
             _settings.Windows.Add(new WindowProfile

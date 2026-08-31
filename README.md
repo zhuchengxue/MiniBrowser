@@ -4,15 +4,16 @@ MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built wi
 
 ## Features
 
-- Mobile-sized browser windows with phone/desktop User-Agent switching.
+- Mobile-sized browser windows that keep WebView2's native Windows identity for site compatibility.
 - Minimal top chrome with address bar, back, forward, refresh, and menu controls.
 - Tray icon toggle. The window can appear at the bottom left, bottom center, or bottom right of the active taskbar screen.
 - Global hotkey: `Ctrl+Shift+Space` shows/hides MiniBrowser at the configured bottom position and focuses the address bar.
 - Home defaults to Google NCR: `https://www.google.com/ncr`.
 - Search engine is configurable. The default is Google: `https://www.google.com/search?q={query}`.
 - Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
-- Site profiles: save phone/desktop mode, ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
+- Site profiles: save ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
 - Ad blocking with built-in host rules, custom hosts, simplified EasyList parsing, and cosmetic CSS hiding.
+- Compatibility bypass for search, login, and bot-verification infrastructure so ad blocking does not break common verification flows.
 - Edge auto-hide keeps a snapped window tucked against the screen edge until the mouse returns.
 - Automatic update checks are off by default to keep startup quiet; use Preferences when you want them.
 - Global whitelist and per-site ad blocking toggle.
@@ -84,7 +85,7 @@ dist\MiniBrowser-Portable
 dist\MiniBrowser-Portable.zip
 ```
 
-`MiniBrowser-Portable.zip` is the default asset name used by the automatic updater. For a new release, upload this zip to a GitHub Release and use a tag such as `v0.4.9`.
+`MiniBrowser-Portable.zip` is the default asset name used by the automatic updater. For a new release, upload this zip to a GitHub Release and use a tag such as `v0.5.1`.
 
 ## Build Installer Package
 
@@ -146,6 +147,10 @@ To verify that a GitHub Release is ready for automatic updates:
 ```
 
 ## Site Profiles
+
+MiniBrowser always uses the native Windows WebView2 User-Agent. The compact window still triggers responsive mobile layouts without forging an iPhone/Safari identity. Search, login, and bot-verification pages bypass both request blocking and cosmetic hiding for compatibility.
+
+When upgrading from an older build, MiniBrowser clears stale WebView2 cache and service workers once while preserving cookies and login sessions.
 
 The app menu includes:
 

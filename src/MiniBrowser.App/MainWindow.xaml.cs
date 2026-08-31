@@ -16,9 +16,6 @@ namespace MiniBrowser.App;
 public partial class MainWindow : Window
 {
     private const string GoogleSearchUrl = "https://www.google.com/search?q={query}";
-    private const string MobileUserAgent =
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
-
     private static readonly WindowPreset[] SizePresets =
     [
         new("390x844", 390, 844),
@@ -28,11 +25,6 @@ public partial class MainWindow : Window
     ];
 
     private static readonly double[] OpacityPresets = [1.0, 0.92, 0.84, 0.76];
-    private const string LowMemoryBrowserArguments =
-        "--disable-background-networking --disable-sync --disable-component-update " +
-        "--disable-domain-reliability --metrics-recording-only " +
-        "--disable-features=Translate,MediaRouter,OptimizationHints,AutofillServerCommunication";
-
     private readonly SettingsService _settingsService;
     private readonly AdBlockService _adBlockService;
     private readonly EdgeAutoHideService _edgeAutoHideService;
@@ -52,6 +44,7 @@ public partial class MainWindow : Window
     private bool _suspendInProgress;
     private bool _suspendRequested;
     private int _blockedRequestCount;
+    private string _topLevelHost = string.Empty;
     private System.Windows.Interop.HwndSource? _keyboardSource;
 
     public MainWindow(
@@ -161,16 +154,17 @@ public partial class MainWindow : Window
 
             Activate();
 
-            var options = new CoreWebView2EnvironmentOptions
-            {
-                AdditionalBrowserArguments = _settings.LowMemoryMode ? LowMemoryBrowserArguments : string.Empty
-            };
             var environment = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: RuntimePaths.WebView2DataDirectory,
-                options);
+                options: null);
             await Browser.EnsureCoreWebView2Async(environment);
             await ConfigureBrowserAsync();
+            if (_settings.CompatibilityCacheResetPending && await ClearRuntimeCacheAsync())
+            {
+                _settings.CompatibilityCacheResetPending = false;
+                SaveSettings();
+            }
             Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
             ScheduleStartupUpdateCheck();
         }
@@ -203,6 +197,7 @@ public partial class MainWindow : Window
         Browser.CoreWebView2.WebResourceRequested += Browser_WebResourceRequested;
         Browser.CoreWebView2.NavigationStarting += (_, args) =>
         {
+            _topLevelHost = HostFromUrl(args.Uri);
             if (!_isEditingAddress)
             {
                 AddressBox.Text = args.Uri;
@@ -396,7 +391,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        Browser.CoreWebView2.Settings.UserAgent = _profile.MobileMode ? MobileUserAgent : string.Empty;
+        // Keep WebView2's native Windows UA. The compact window already triggers responsive layouts,
+        // while a forged Safari/iPhone UA creates a platform mismatch that bot checks can flag.
+        Browser.CoreWebView2.Settings.UserAgent = string.Empty;
     }
 
     private void UpdateToggleLabels()
@@ -502,10 +499,6 @@ public partial class MainWindow : Window
         menu.Items.Add(newWindow);
 
         menu.Items.Add(new Separator());
-        var phone = new MenuItem { Header = _profile.MobileMode ? "Desktop mode" : "Phone mode" };
-        phone.Click += MobileButton_Click;
-        menu.Items.Add(phone);
-
         var shield = new MenuItem { Header = IsCurrentSiteAdBlockEnabled() ? "Ad block: ON for this site" : "Ad block: OFF for this site" };
         shield.Click += ShieldButton_Click;
         menu.Items.Add(shield);
@@ -577,23 +570,11 @@ public partial class MainWindow : Window
         UpdateToggleLabels();
     }
 
-    private void ToggleLowMemoryMode()
-    {
-        _settings.LowMemoryMode = !_settings.LowMemoryMode;
-        SaveSettings();
-        StatusText.Text = _settings.LowMemoryMode ? "Low memory mode enabled" : "Low memory mode disabled";
-        System.Windows.MessageBox.Show(
-            "Low memory mode will take effect after restarting MiniBrowser.",
-            "MiniBrowser",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
-
-    private async Task ClearRuntimeCacheAsync()
+    private async Task<bool> ClearRuntimeCacheAsync()
     {
         if (Browser.CoreWebView2 is null)
         {
-            return;
+            return false;
         }
 
         try
@@ -604,6 +585,7 @@ public partial class MainWindow : Window
                 CoreWebView2BrowsingDataKinds.CacheStorage |
                 CoreWebView2BrowsingDataKinds.ServiceWorkers);
             StatusText.Text = "Cache cleared";
+            return true;
         }
         catch (Exception ex)
         {
@@ -614,6 +596,7 @@ public partial class MainWindow : Window
                 "MiniBrowser",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+            return false;
         }
     }
 
@@ -1054,9 +1037,20 @@ public partial class MainWindow : Window
 
     private bool IsAdBlockEnabledForUrl(string rawUrl)
     {
+        var currentHost = CurrentHost();
+        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(_topLevelHost, currentHost))
+        {
+            return false;
+        }
+
         if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
         {
             return _settings.AdBlockEnabled && _profile.AdBlockEnabled;
+        }
+
+        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(_topLevelHost, uri.Host))
+        {
+            return false;
         }
 
         return _settings.AdBlockEnabled &&
@@ -1066,6 +1060,11 @@ public partial class MainWindow : Window
     private bool IsCurrentSiteAdBlockEnabled()
     {
         var host = CurrentHost();
+        if (BrowserCompatibilityPolicy.BypassAdBlockForHost(host))
+        {
+            return false;
+        }
+
         return _settings.AdBlockEnabled &&
                (SiteProfileForHost(host)?.AdBlockEnabled ?? _profile.AdBlockEnabled) &&
                (string.IsNullOrWhiteSpace(host) || !_settings.AdBlockWhitelist.Any(item => HostMatches(host, item)));
@@ -1074,6 +1073,11 @@ public partial class MainWindow : Window
     private string CurrentHost()
     {
         var rawUrl = Browser.Source?.ToString();
+        return Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri) ? uri.Host : string.Empty;
+    }
+
+    private static string HostFromUrl(string rawUrl)
+    {
         return Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri) ? uri.Host : string.Empty;
     }
 

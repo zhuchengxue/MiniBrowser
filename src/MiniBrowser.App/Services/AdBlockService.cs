@@ -186,7 +186,7 @@ public sealed class AdBlockService
         return false;
     }
 
-    public string CreateCosmeticScript()
+    public string CreateCosmeticScript(IEnumerable<string>? bypassHosts = null)
     {
         var selectors = _cosmeticSelectors
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -198,9 +198,20 @@ public sealed class AdBlockService
         }
 
         var selectorJson = JsonSerializer.Serialize(selectors);
+        var bypassHostJson = JsonSerializer.Serialize(
+            (bypassHosts ?? [])
+                .Where(host => !string.IsNullOrWhiteSpace(host))
+                .Select(host => host.Trim().TrimStart('.').ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray());
 
         return $$"""
             (() => {
+              const bypassHosts = {{bypassHostJson}};
+              const host = location.hostname.toLowerCase();
+              if (bypassHosts.some(candidate => host === candidate || host.endsWith("." + candidate))) {
+                return;
+              }
               const selectors = {{selectorJson}};
               const styleId = "mini-browser-ad-hide";
               const css = selectors.join(",\n") + "{display:none!important;visibility:hidden!important;}";

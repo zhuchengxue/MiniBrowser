@@ -83,6 +83,21 @@ public sealed class SettingsService
 
     private static void Normalize(AppSettings settings)
     {
+        // Version 2 disables legacy low-memory flags once, because they can break bot checks and login flows.
+        if (settings.SettingsVersion < 2)
+        {
+            settings.LowMemoryMode = false;
+            settings.SettingsVersion = 2;
+        }
+
+        if (settings.SettingsVersion < 3)
+        {
+            settings.CompatibilityCacheResetPending = true;
+            settings.SettingsVersion = 3;
+        }
+
+        settings.LowMemoryMode = false;
+
         settings.HomeUrl = NormalizeGoogleHomeUrl(settings.HomeUrl);
         settings.LastUrl = NormalizeUrl(settings.LastUrl, settings.HomeUrl);
         settings.LastUrl = NormalizeGoogleStartUrl(settings.LastUrl);

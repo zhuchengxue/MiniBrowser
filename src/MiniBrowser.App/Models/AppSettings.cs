@@ -2,13 +2,15 @@ namespace MiniBrowser.App.Models;
 
 public sealed class AppSettings
 {
+    public int SettingsVersion { get; set; } = 3;
+    public bool CompatibilityCacheResetPending { get; set; }
     public string HomeUrl { get; set; } = "https://www.google.com/ncr";
     public string LastUrl { get; set; } = "https://www.google.com/ncr";
     public string SearchEngineUrl { get; set; } = "https://www.google.com/search?q={query}";
     public string PopupPosition { get; set; } = "BottomRight";
     public bool EdgeAutoHideEnabled { get; set; } = true;
     public bool GlobalHotkeyEnabled { get; set; } = true;
-    public bool LowMemoryMode { get; set; } = true;
+    public bool LowMemoryMode { get; set; }
     public bool AutoCheckUpdates { get; set; }
     public DateTime LastUpdateCheckUtc { get; set; } = DateTime.MinValue;
     public bool AdBlockEnabled { get; set; } = true;
@@ -22,7 +24,7 @@ public sealed class AppSettings
     public double WindowTop { get; set; } = -1;
     public double WindowOpacity { get; set; } = 1.0;
     public bool Topmost { get; set; } = true;
-    public bool MobileMode { get; set; } = true;
+    public bool MobileMode { get; set; }
     public bool ChromeVisible { get; set; } = true;
     public int SizePresetIndex { get; set; }
     public List<QuickSite> QuickSites { get; set; } =
@@ -39,7 +41,7 @@ public sealed record QuickSite(string Name, string Url);
 public sealed class SiteProfile
 {
     public string Host { get; set; } = string.Empty;
-    public bool MobileMode { get; set; } = true;
+    public bool MobileMode { get; set; }
     public bool AdBlockEnabled { get; set; } = true;
     public bool Topmost { get; set; } = true;
     public bool ChromeVisible { get; set; } = true;
@@ -59,7 +61,7 @@ public sealed class WindowProfile
     public double Top { get; set; } = -1;
     public double Opacity { get; set; } = 1.0;
     public bool Topmost { get; set; } = true;
-    public bool MobileMode { get; set; } = true;
+    public bool MobileMode { get; set; }
     public bool ChromeVisible { get; set; } = true;
     public bool Borderless { get; set; }
     public bool AdBlockEnabled { get; set; } = true;
