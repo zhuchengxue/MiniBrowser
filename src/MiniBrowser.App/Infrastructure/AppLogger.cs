@@ -6,11 +6,6 @@ public static class AppLogger
 {
     private static readonly object Sync = new();
 
-    public static void Info(string message)
-    {
-        Write("INFO", message);
-    }
-
     public static void Error(Exception exception, string message)
     {
         Write("ERROR", message + Environment.NewLine + exception);

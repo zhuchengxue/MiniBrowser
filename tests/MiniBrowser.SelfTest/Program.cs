@@ -13,6 +13,7 @@ var tests = new (string Name, Action Body)[]
     ("Settings normalizes site profiles", SettingsNormalizesSiteProfiles),
     ("Settings normalizes Google NCR startup URLs", SettingsNormalizesGoogleNcrStartupUrls),
     ("Settings load migrates broken Google startup URL", SettingsLoadMigratesBrokenGoogleStartupUrl),
+    ("Settings skips identical repeated saves", SettingsSkipsIdenticalRepeatedSaves),
     ("Settings defaults to Google search", SettingsDefaultsToGoogleSearch),
     ("Settings defaults popup position to bottom right", SettingsDefaultsPopupPositionToBottomRight),
     ("Settings enables edge auto hide by default", SettingsEnablesEdgeAutoHideByDefault),
@@ -222,6 +223,21 @@ static void SettingsLoadMigratesBrokenGoogleStartupUrl()
     Assert(loaded.HomeUrl == "https://www.google.com/ncr", "loaded Google home should migrate to NCR");
     Assert(loaded.LastUrl == "https://www.google.com/ncr", "loaded broken Google China mobile URL should migrate to NCR");
     Assert(loaded.Windows[0].Url == "https://www.google.com/ncr", "loaded window URL should migrate to NCR");
+}
+
+static void SettingsSkipsIdenticalRepeatedSaves()
+{
+    Directory.CreateDirectory(RuntimePaths.DataDirectory);
+    File.Delete(RuntimePaths.SettingsPath);
+    File.Delete(RuntimePaths.SettingsBackupPath);
+
+    var service = new SettingsService();
+    var settings = new AppSettings { HomeUrl = "https://www.google.com/ncr" };
+    service.Save(settings);
+    File.Delete(RuntimePaths.SettingsBackupPath);
+    service.Save(settings);
+
+    Assert(!File.Exists(RuntimePaths.SettingsBackupPath), "identical repeated save should not create a backup file");
 }
 
 static void SettingsDefaultsPopupPositionToBottomRight()

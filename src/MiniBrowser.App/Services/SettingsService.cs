@@ -17,6 +17,7 @@ public sealed class SettingsService
 
     private readonly string _settingsPath;
     private readonly string _backupPath;
+    private string? _lastSavedJson;
 
     public SettingsService()
     {
@@ -36,6 +37,7 @@ public sealed class SettingsService
         {
             var json = File.ReadAllText(_settingsPath);
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            _lastSavedJson = json;
             Normalize(settings);
             return settings;
         }
@@ -57,8 +59,14 @@ public sealed class SettingsService
     {
         Normalize(settings);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        if (File.Exists(_settingsPath) && File.ReadAllText(_settingsPath) == json)
+        if (_lastSavedJson == json)
         {
+            return;
+        }
+
+        if (_lastSavedJson is null && File.Exists(_settingsPath) && File.ReadAllText(_settingsPath) == json)
+        {
+            _lastSavedJson = json;
             return;
         }
 
@@ -70,6 +78,7 @@ public sealed class SettingsService
         }
 
         File.Move(tempPath, _settingsPath, overwrite: true);
+        _lastSavedJson = json;
     }
 
     private static void Normalize(AppSettings settings)

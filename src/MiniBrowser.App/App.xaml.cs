@@ -27,7 +27,6 @@ public partial class App : System.Windows.Application
             args.Handled = true;
             System.Windows.MessageBox.Show(args.Exception.Message, AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
         };
-        AppLogger.Info($"{AppInfo.ProductName} {AppInfo.Version} starting.");
         _settingsService = new SettingsService();
         _settings = _settingsService.Load();
         if (_settings.Windows.Count == 0)
