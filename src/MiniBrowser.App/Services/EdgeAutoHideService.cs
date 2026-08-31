@@ -1,4 +1,6 @@
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Threading;
 
 namespace MiniBrowser.App.Services;
@@ -10,22 +12,25 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private readonly Window _window;
     private readonly Func<bool> _isEnabled;
-    private readonly Func<bool> _shouldSuppress;
     private readonly DispatcherTimer _timer;
     private bool _isHidden;
-    private Rect _restoreBounds;
+    private bool _revealArmed;
+    private NativeRect _restoreBounds;
+    private EdgeSide _hiddenSide;
+    private DateTime _ignoreHideUntilUtc;
+    private DateTime _ignoreRevealUntilUtc;
+    private EdgeSide _candidateEdge;
+    private DateTime _candidateSinceUtc;
 
-    public EdgeAutoHideService(Window window, Func<bool> isEnabled, Func<bool> shouldSuppress)
+    public EdgeAutoHideService(Window window, Func<bool> isEnabled)
     {
         _window = window;
         _isEnabled = isEnabled;
-        _shouldSuppress = shouldSuppress;
         _timer = new DispatcherTimer(DispatcherPriority.Background, window.Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _timer.Tick += Timer_Tick;
-        _window.MouseEnter += Window_MouseEnter;
     }
 
     public bool IsHidden => _isHidden;
@@ -47,23 +52,23 @@ public sealed class EdgeAutoHideService : IDisposable
             return;
         }
 
-        _window.Left = _restoreBounds.Left;
-        _window.Top = _restoreBounds.Top;
-        _window.Width = _restoreBounds.Width;
-        _window.Height = _restoreBounds.Height;
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            MoveWindow(handle, _restoreBounds);
+        }
+
         _isHidden = false;
+        _hiddenSide = EdgeSide.None;
+        _revealArmed = false;
+        _candidateEdge = EdgeSide.None;
+        _ignoreHideUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
     }
 
     public void Dispose()
     {
         Stop();
         _timer.Tick -= Timer_Tick;
-        _window.MouseEnter -= Window_MouseEnter;
-    }
-
-    private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        Reveal();
     }
 
     private void Timer_Tick(object? sender, EventArgs e)
@@ -71,47 +76,127 @@ public sealed class EdgeAutoHideService : IDisposable
         if (!_isEnabled() ||
             !_window.IsVisible ||
             _window.WindowState != WindowState.Normal ||
-            _isHidden ||
-            _window.IsMouseOver ||
-            _shouldSuppress())
+            IsAnyContextMenuOpen())
+        {
+            return;
+        }
+
+        if (_isHidden)
+        {
+            var now = DateTime.UtcNow;
+            var cursorOnStrip = IsCursorOnVisibleStrip();
+            if (!cursorOnStrip)
+            {
+                _revealArmed = true;
+                return;
+            }
+
+            if (_revealArmed && now >= _ignoreRevealUntilUtc)
+            {
+                Reveal();
+            }
+
+            return;
+        }
+
+        if (_window.IsMouseOver)
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow < _ignoreHideUntilUtc)
         {
             return;
         }
 
         var side = GetSnappedEdge();
-        if (side != EdgeSide.None)
+        if (side == EdgeSide.None)
         {
+            _candidateEdge = EdgeSide.None;
+            return;
+        }
+
+        if (_candidateEdge != side)
+        {
+            _candidateEdge = side;
+            _candidateSinceUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if (DateTime.UtcNow - _candidateSinceUtc >= TimeSpan.FromMilliseconds(500))
+        {
+            _candidateEdge = EdgeSide.None;
             Hide(side);
         }
     }
 
+    private bool IsCursorOnVisibleStrip()
+    {
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle == IntPtr.Zero ||
+            !GetWindowRect(handle, out var rect) ||
+            !GetCursorPos(out var point))
+        {
+            return false;
+        }
+
+        const int padding = 3;
+        return _hiddenSide switch
+        {
+            EdgeSide.Left => point.X >= rect.Right - VisibleStrip - padding &&
+                             point.X <= rect.Right + padding &&
+                             point.Y >= rect.Top - padding &&
+                             point.Y <= rect.Bottom + padding,
+            EdgeSide.Right => point.X >= rect.Left - padding &&
+                              point.X <= rect.Left + VisibleStrip + padding &&
+                              point.Y >= rect.Top - padding &&
+                              point.Y <= rect.Bottom + padding,
+            EdgeSide.Top => point.X >= rect.Left - padding &&
+                            point.X <= rect.Right + padding &&
+                            point.Y >= rect.Bottom - VisibleStrip - padding &&
+                            point.Y <= rect.Bottom + padding,
+            EdgeSide.Bottom => point.X >= rect.Left - padding &&
+                               point.X <= rect.Right + padding &&
+                               point.Y >= rect.Top - padding &&
+                               point.Y <= rect.Top + VisibleStrip + padding,
+            _ => false
+        };
+    }
+
+    private bool IsAnyContextMenuOpen()
+    {
+        return _window.ContextMenu?.IsOpen == true;
+    }
+
     private EdgeSide GetSnappedEdge()
     {
-        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)_window.Left, (int)_window.Top));
-        var work = screen.WorkingArea;
-        var source = PresentationSource.FromVisual(_window);
-        var fromDevice = source?.CompositionTarget?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
-        var topLeft = fromDevice.Transform(new System.Windows.Point(work.Left, work.Top));
-        var bottomRight = fromDevice.Transform(new System.Windows.Point(work.Right, work.Bottom));
-        var right = _window.Left + WindowWidth();
-        var bottom = _window.Top + WindowHeight();
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var nativeRect))
+        {
+            return EdgeSide.None;
+        }
 
-        if (Math.Abs(_window.Left - topLeft.X) <= SnapMargin)
+        // Use the native rectangle for detection so DPI scaling and native moves
+        // (including snap layouts) do not leave WPF coordinates stale.
+        var screen = System.Windows.Forms.Screen.FromHandle(handle);
+        var work = screen.WorkingArea;
+
+        if (Math.Abs(nativeRect.Left - work.Left) <= SnapMargin)
         {
             return EdgeSide.Left;
         }
 
-        if (Math.Abs(right - bottomRight.X) <= SnapMargin)
+        if (Math.Abs(nativeRect.Right - work.Right) <= SnapMargin)
         {
             return EdgeSide.Right;
         }
 
-        if (Math.Abs(_window.Top - topLeft.Y) <= SnapMargin)
+        if (Math.Abs(nativeRect.Top - work.Top) <= SnapMargin)
         {
             return EdgeSide.Top;
         }
 
-        if (Math.Abs(bottom - bottomRight.Y) <= SnapMargin)
+        if (Math.Abs(nativeRect.Bottom - work.Bottom) <= SnapMargin)
         {
             return EdgeSide.Bottom;
         }
@@ -121,34 +206,37 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private void Hide(EdgeSide side)
     {
-        _restoreBounds = new Rect(_window.Left, _window.Top, WindowWidth(), WindowHeight());
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out _restoreBounds))
+        {
+            return;
+        }
+
         _isHidden = true;
+        _hiddenSide = side;
+        _revealArmed = false;
+        _candidateEdge = EdgeSide.None;
+        _ignoreRevealUntilUtc = DateTime.UtcNow.AddMilliseconds(500);
+
+        var hiddenBounds = _restoreBounds;
 
         switch (side)
         {
             case EdgeSide.Left:
-                _window.Left = _restoreBounds.Left - _restoreBounds.Width + VisibleStrip;
+                hiddenBounds.Offset((int)(-_restoreBounds.Width + VisibleStrip), 0);
                 break;
             case EdgeSide.Right:
-                _window.Left = _restoreBounds.Right - VisibleStrip;
+                hiddenBounds.Offset((int)(_restoreBounds.Width - VisibleStrip), 0);
                 break;
             case EdgeSide.Top:
-                _window.Top = _restoreBounds.Top - _restoreBounds.Height + VisibleStrip;
+                hiddenBounds.Offset(0, (int)(-_restoreBounds.Height + VisibleStrip));
                 break;
             case EdgeSide.Bottom:
-                _window.Top = _restoreBounds.Bottom - VisibleStrip;
+                hiddenBounds.Offset(0, (int)(_restoreBounds.Height - VisibleStrip));
                 break;
         }
-    }
 
-    private double WindowWidth()
-    {
-        return _window.ActualWidth > 0 ? _window.ActualWidth : _window.Width;
-    }
-
-    private double WindowHeight()
-    {
-        return _window.ActualHeight > 0 ? _window.ActualHeight : _window.Height;
+        MoveWindow(handle, hiddenBounds);
     }
 
     private enum EdgeSide
@@ -158,5 +246,63 @@ public sealed class EdgeAutoHideService : IDisposable
         Right,
         Top,
         Bottom
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
+
+    private static void MoveWindow(IntPtr handle, NativeRect bounds)
+    {
+        const uint noZOrder = 0x0004;
+        const uint noActivate = 0x0010;
+        SetWindowPos(
+            handle,
+            IntPtr.Zero,
+            bounds.Left,
+            bounds.Top,
+            bounds.Width,
+            bounds.Height,
+            noZOrder | noActivate);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public int Width => Right - Left;
+
+        public int Height => Bottom - Top;
+
+        public void Offset(int x, int y)
+        {
+            Left += x;
+            Right += x;
+            Top += y;
+            Bottom += y;
+        }
     }
 }

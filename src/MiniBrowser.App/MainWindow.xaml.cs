@@ -65,8 +65,7 @@ public partial class MainWindow : Window
         _trayService = new TrayService(this, ExitApplication, ToggleBorderMode, ShowChrome, ShowAboveTray);
         _edgeAutoHideService = new EdgeAutoHideService(
             this,
-            () => _settings.EdgeAutoHideEnabled,
-            () => AddressBox.IsKeyboardFocusWithin);
+            () => _settings.EdgeAutoHideEnabled);
 
         Width = _profile.Width;
         Height = _profile.Height;
