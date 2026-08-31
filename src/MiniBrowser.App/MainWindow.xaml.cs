@@ -144,7 +144,7 @@ public partial class MainWindow : Window
                 userDataFolder: RuntimePaths.WebView2DataDirectory,
                 options);
             await Browser.EnsureCoreWebView2Async(environment);
-            ConfigureBrowser();
+            await ConfigureBrowserAsync();
             Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
             _edgeAutoHideService.Start();
             ScheduleStartupUpdateCheck();
@@ -161,15 +161,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ConfigureBrowser()
+    private async Task ConfigureBrowserAsync()
     {
         Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
         Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
         Browser.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
 
         ApplyUserAgent();
-        Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_cosmeticScript);
-        Browser.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+        if (!string.IsNullOrWhiteSpace(_cosmeticScript))
+        {
+            await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_cosmeticScript);
+        }
+
+        AddAdBlockRequestFilters();
         Browser.CoreWebView2.NewWindowRequested += Browser_NewWindowRequested;
         Browser.CoreWebView2.WebResourceRequested += Browser_WebResourceRequested;
         Browser.CoreWebView2.NavigationStarting += (_, args) =>
@@ -196,7 +200,6 @@ public partial class MainWindow : Window
                 _settings.LastUrl = _profile.Url;
                 ApplySiteProfileForUrl(_profile.Url, saveWindowState: false);
                 SaveSettings();
-                Browser.CoreWebView2.ExecuteScriptAsync(_cosmeticScript);
             }
 
             UpdateNavigationButtons();
@@ -210,6 +213,26 @@ public partial class MainWindow : Window
 
             UpdateNavigationButtons();
         };
+    }
+
+    private void AddAdBlockRequestFilters()
+    {
+        var contexts = new[]
+        {
+            CoreWebView2WebResourceContext.Document,
+            CoreWebView2WebResourceContext.Image,
+            CoreWebView2WebResourceContext.Media,
+            CoreWebView2WebResourceContext.Script,
+            CoreWebView2WebResourceContext.XmlHttpRequest,
+            CoreWebView2WebResourceContext.Fetch,
+            CoreWebView2WebResourceContext.Ping,
+            CoreWebView2WebResourceContext.Other
+        };
+
+        foreach (var context in contexts)
+        {
+            Browser.CoreWebView2.AddWebResourceRequestedFilter("*", context);
+        }
     }
 
     private void Browser_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
