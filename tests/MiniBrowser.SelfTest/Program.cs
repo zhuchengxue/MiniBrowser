@@ -7,6 +7,7 @@ var tests = new (string Name, Action Body)[]
 {
     ("AdBlock blocks EasyList hosts and URL rules", AdBlockBlocksEasyListRules),
     ("AdBlock honors whitelist", AdBlockHonorsWhitelist),
+    ("AdBlock replaces custom hosts without rebuilding service", AdBlockReplacesCustomHostsWithoutRebuildingService),
     ("Cosmetic script includes EasyList selectors", CosmeticScriptIncludesSelectors),
     ("Edge auto hide geometry keeps one visible strip", EdgeAutoHideGeometryKeepsOneVisibleStrip),
     ("Edge auto hide reveal only arms on visible strip", EdgeAutoHideRevealOnlyArmsOnVisibleStrip),
@@ -86,6 +87,17 @@ static void AdBlockHonorsWhitelist()
     var service = CreateAdBlockService();
     Assert(!service.ShouldBlock("https://ads.example.com/banner.js", enabled: false), "disabled blocker should not block");
     Assert(!service.ShouldBlock("https://ads.example.com/banner.js", enabled: true, ["example.com"]), "whitelist should bypass block");
+}
+
+static void AdBlockReplacesCustomHostsWithoutRebuildingService()
+{
+    var service = CreateAdBlockService();
+    Assert(service.ShouldBlock("https://custom-ads.example.org/pixel.gif", enabled: true), "initial custom host should block");
+
+    service.ReplaceCustomBlockedHosts(["fresh-ads.example.net"]);
+
+    Assert(!service.ShouldBlock("https://custom-ads.example.org/pixel.gif", enabled: true), "removed custom host should stop blocking");
+    Assert(service.ShouldBlock("https://fresh-ads.example.net/pixel.gif", enabled: true), "new custom host should block immediately");
 }
 
 static void CosmeticScriptIncludesSelectors()

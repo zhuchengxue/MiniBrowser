@@ -7,6 +7,7 @@ namespace MiniBrowser.App.Services;
 public sealed class AdBlockService
 {
     private readonly HashSet<string> _blockedHosts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _customBlockedHosts = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _urlContainsRules = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _cosmeticSelectors = [];
 
@@ -73,7 +74,7 @@ public sealed class AdBlockService
         "[data-testid*='ad']"
     ];
 
-    public int HostRuleCount => _blockedHosts.Count;
+    public int HostRuleCount => _blockedHosts.Count + _customBlockedHosts.Count;
     public int UrlRuleCount => _urlContainsRules.Count;
     public int CosmeticRuleCount => _cosmeticSelectors.Count;
 
@@ -94,10 +95,7 @@ public sealed class AdBlockService
             AddCosmeticSelector(selector);
         }
 
-        foreach (var host in customBlockedHosts ?? [])
-        {
-            AddHost(host);
-        }
+        ReplaceCustomBlockedHosts(customBlockedHosts ?? []);
     }
 
     public void AddHost(string host)
@@ -124,6 +122,19 @@ public sealed class AdBlockService
         if (!string.IsNullOrWhiteSpace(trimmed) && !trimmed.Contains('{') && !trimmed.Contains('}'))
         {
             _cosmeticSelectors.Add(trimmed);
+        }
+    }
+
+    public void ReplaceCustomBlockedHosts(IEnumerable<string> hosts)
+    {
+        _customBlockedHosts.Clear();
+        foreach (var host in hosts)
+        {
+            var normalized = NormalizeHost(host);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                _customBlockedHosts.Add(normalized);
+            }
         }
     }
 
@@ -158,7 +169,7 @@ public sealed class AdBlockService
             return false;
         }
 
-        if (MatchesBlockedHost(host))
+        if (MatchesBlockedHost(host) || MatchesAnyHost(host, _customBlockedHosts))
         {
             return true;
         }

@@ -51,16 +51,21 @@ public partial class MainWindow : Window
     private int _blockedRequestCount;
     private System.Windows.Interop.HwndSource? _keyboardSource;
 
-    public MainWindow(SettingsService settingsService, AppSettings settings, WindowProfile profile, bool enableHotkey)
+    public MainWindow(
+        SettingsService settingsService,
+        AppSettings settings,
+        WindowProfile profile,
+        AdBlockService adBlockService,
+        string cosmeticScript,
+        bool enableHotkey)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _settings = settings;
         _profile = profile;
         _isPrimaryWindow = enableHotkey;
-        _adBlockService = new AdBlockService(_settings.CustomBlockedHosts);
-        _adBlockService.LoadEasyListLite(RuntimePaths.EasyListLitePath);
-        _cosmeticScript = _adBlockService.CreateCosmeticScript();
+        _adBlockService = adBlockService;
+        _cosmeticScript = cosmeticScript;
         _trayService = new TrayService(this, ExitApplication, ToggleBorderMode, ShowChrome, ShowAboveTray);
         _edgeAutoHideService = new EdgeAutoHideService(
             this,
@@ -433,8 +438,11 @@ public partial class MainWindow : Window
         preferences.Click += (_, _) =>
         {
             var settingsWindow = new SettingsWindow(_settingsService, _settings) { Owner = this };
-            settingsWindow.ShowDialog();
-            QuickSites.ItemsSource = _settings.QuickSites;
+            if (settingsWindow.ShowDialog() == true)
+            {
+                _adBlockService.ReplaceCustomBlockedHosts(_settings.CustomBlockedHosts);
+                QuickSites.ItemsSource = _settings.QuickSites;
+            }
         };
         menu.Items.Add(preferences);
 

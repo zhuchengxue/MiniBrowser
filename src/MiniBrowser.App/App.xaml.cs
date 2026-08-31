@@ -10,6 +10,8 @@ public partial class App : System.Windows.Application
     private readonly List<MainWindow> _windows = [];
     private SettingsService? _settingsService;
     private AppSettings? _settings;
+    private AdBlockService? _adBlockService;
+    private string _cosmeticScript = string.Empty;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -29,6 +31,9 @@ public partial class App : System.Windows.Application
         };
         _settingsService = new SettingsService();
         _settings = _settingsService.Load();
+        _adBlockService = new AdBlockService(_settings.CustomBlockedHosts);
+        _adBlockService.LoadEasyListLite(RuntimePaths.EasyListLitePath);
+        _cosmeticScript = _adBlockService.CreateCosmeticScript();
         if (_settings.Windows.Count == 0)
         {
             _settings.Windows.Add(new WindowProfile
@@ -54,7 +59,7 @@ public partial class App : System.Windows.Application
 
     public void OpenWindow(WindowProfile? profile = null)
     {
-        if (_settings is null || _settingsService is null)
+        if (_settings is null || _settingsService is null || _adBlockService is null)
         {
             return;
         }
@@ -66,7 +71,7 @@ public partial class App : System.Windows.Application
             _settingsService.Save(_settings);
         }
 
-        var window = new MainWindow(_settingsService, _settings, profile, _windows.Count == 0);
+        var window = new MainWindow(_settingsService, _settings, profile, _adBlockService, _cosmeticScript, _windows.Count == 0);
         window.Closed += (_, _) => _windows.Remove(window);
         _windows.Add(window);
         window.Show();
