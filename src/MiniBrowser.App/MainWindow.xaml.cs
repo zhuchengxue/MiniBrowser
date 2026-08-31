@@ -36,7 +36,6 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly AdBlockService _adBlockService;
     private readonly EdgeAutoHideService _edgeAutoHideService;
-    private readonly UpdateService _updateService = new();
     private readonly string _cosmeticScript;
     private readonly AppSettings _settings;
     private readonly WindowProfile _profile;
@@ -522,7 +521,7 @@ public partial class MainWindow : Window
         SaveSettings();
         try
         {
-            var result = await _updateService.CheckAsync();
+            var result = await new UpdateService().CheckAsync();
             if (result.IsAvailable)
             {
                 Dispatcher.Invoke(() => PromptForUpdate(result));
@@ -553,7 +552,7 @@ public partial class MainWindow : Window
         try
         {
             StatusText.Text = "Checking updates...";
-            var result = await _updateService.CheckAsync();
+            var result = await new UpdateService().CheckAsync();
             _settings.LastUpdateCheckUtc = DateTime.UtcNow;
             SaveSettings();
 
@@ -629,10 +628,11 @@ public partial class MainWindow : Window
         try
         {
             var progress = new Progress<double>(value => StatusText.Text = $"Downloading update {Math.Round(value * 100)}%...");
-            var zipPath = await _updateService.DownloadAsync(asset, progress);
-            var scriptPath = _updateService.PrepareUpdaterScript(zipPath);
+            var updateService = new UpdateService();
+            var zipPath = await updateService.DownloadAsync(asset, progress);
+            var scriptPath = updateService.PrepareUpdaterScript(zipPath);
             SaveSettings();
-            _updateService.LaunchUpdater(scriptPath);
+            updateService.LaunchUpdater(scriptPath);
             _isReallyClosing = true;
             System.Windows.Application.Current.Shutdown();
         }

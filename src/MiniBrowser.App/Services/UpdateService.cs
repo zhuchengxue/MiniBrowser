@@ -8,12 +8,12 @@ namespace MiniBrowser.App.Services;
 
 public sealed class UpdateService
 {
-    private static readonly HttpClient Client = CreateClient();
+    private static readonly Lazy<HttpClient> Client = new(CreateClient);
 
     public async Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)
     {
         var url = $"https://api.github.com/repos/{AppInfo.RepositoryOwner}/{AppInfo.RepositoryName}/releases/latest";
-        using var response = await Client.GetAsync(url, cancellationToken);
+        using var response = await Client.Value.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return UpdateCheckResult.Unavailable($"GitHub returned {(int)response.StatusCode} {response.ReasonPhrase}.");
@@ -49,7 +49,7 @@ public sealed class UpdateService
     {
         Directory.CreateDirectory(RuntimePaths.UpdatesDirectory);
         var zipPath = Path.Combine(RuntimePaths.UpdatesDirectory, AppInfo.PortableAssetName);
-        using var response = await Client.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await Client.Value.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var total = response.Content.Headers.ContentLength;
