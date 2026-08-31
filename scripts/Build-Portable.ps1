@@ -23,11 +23,9 @@ Get-Process MiniBrowser.App -ErrorAction SilentlyContinue |
 Start-Sleep -Milliseconds 700
 
 if (Test-Path -LiteralPath $publishDir) {
-    $removed = $false
     for ($attempt = 1; $attempt -le 5; $attempt++) {
         try {
             Remove-Item -LiteralPath $publishDir -Recurse -Force
-            $removed = $true
             break
         } catch {
             if ($attempt -eq 5) {
@@ -110,11 +108,34 @@ Set-Content -LiteralPath (Join-Path $publishDir "VERSION.txt") -Value "0.4.9" -E
 Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.ps1") -Destination (Join-Path $publishDir "Install-MiniBrowser.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\Install-MiniBrowser.cmd") -Destination (Join-Path $publishDir "Install-MiniBrowser.cmd") -Force
 
+if (Test-Path -LiteralPath (Join-Path $publishDir "Data")) {
+    throw "Portable publish directory must not include runtime Data."
+}
+
+$debugFiles = Get-ChildItem -LiteralPath $publishDir -Recurse -Force -File -Filter "*.pdb"
+if ($debugFiles) {
+    throw "Portable publish directory must not include debug symbols: $($debugFiles[0].FullName)"
+}
+
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 
 Compress-Archive -LiteralPath $publishDir -DestinationPath $zipPath
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+    $forbiddenEntry = $zip.Entries | Where-Object {
+        $_.FullName -like "*/Data/*" -or $_.FullName -like "*.pdb"
+    } | Select-Object -First 1
+    if ($forbiddenEntry) {
+        throw "Portable zip contains forbidden entry: $($forbiddenEntry.FullName)"
+    }
+}
+finally {
+    $zip.Dispose()
+}
 
 Write-Output "Portable package created:"
 Write-Output $publishDir
