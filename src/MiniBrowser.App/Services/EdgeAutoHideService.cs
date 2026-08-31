@@ -12,6 +12,8 @@ public sealed class EdgeAutoHideService : IDisposable
 
     private readonly Window _window;
     private readonly Func<bool> _isEnabled;
+    private readonly Action? _hidden;
+    private readonly Action? _revealed;
     private readonly DispatcherTimer _timer;
     private bool _isHidden;
     private bool _revealArmed;
@@ -22,10 +24,12 @@ public sealed class EdgeAutoHideService : IDisposable
     private EdgeSide _candidateEdge;
     private DateTime _candidateSinceUtc;
 
-    public EdgeAutoHideService(Window window, Func<bool> isEnabled)
+    public EdgeAutoHideService(Window window, Func<bool> isEnabled, Action? hidden = null, Action? revealed = null)
     {
         _window = window;
         _isEnabled = isEnabled;
+        _hidden = hidden;
+        _revealed = revealed;
         _timer = new DispatcherTimer(DispatcherPriority.Background, window.Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(250)
@@ -63,6 +67,7 @@ public sealed class EdgeAutoHideService : IDisposable
         _revealArmed = false;
         _candidateEdge = EdgeSide.None;
         _ignoreHideUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
+        _revealed?.Invoke();
     }
 
     public void Dispose()
@@ -199,6 +204,7 @@ public sealed class EdgeAutoHideService : IDisposable
         _ignoreRevealUntilUtc = DateTime.UtcNow.AddMilliseconds(500);
 
         MoveWindow(handle, GetHiddenBounds(_restoreBounds, side));
+        _hidden?.Invoke();
     }
 
     internal static NativeRect GetHiddenBounds(NativeRect restoreBounds, EdgeSide side)

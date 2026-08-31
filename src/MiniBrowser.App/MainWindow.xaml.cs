@@ -48,6 +48,9 @@ public partial class MainWindow : Window
     private bool _removeProfileOnClose;
     private bool _applyingSiteProfile;
     private bool _usesPopupStartupPosition;
+    private bool _browserSuspended;
+    private bool _suspendInProgress;
+    private bool _suspendRequested;
     private int _blockedRequestCount;
     private System.Windows.Interop.HwndSource? _keyboardSource;
 
@@ -69,7 +72,9 @@ public partial class MainWindow : Window
         _trayService = new TrayService(this, ExitApplication, ToggleBorderMode, ShowChrome, ShowAboveTray);
         _edgeAutoHideService = new EdgeAutoHideService(
             this,
-            () => _settings.EdgeAutoHideEnabled);
+            () => _settings.EdgeAutoHideEnabled,
+            SuspendBrowserWhenHidden,
+            ResumeBrowserIfNeeded);
 
         Width = _profile.Width;
         Height = _profile.Height;
@@ -118,6 +123,7 @@ public partial class MainWindow : Window
         ApplyBorderMode();
 
         Loaded += MainWindow_Loaded;
+        IsVisibleChanged += MainWindow_IsVisibleChanged;
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -125,6 +131,18 @@ public partial class MainWindow : Window
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         _keyboardSource = System.Windows.Interop.HwndSource.FromHwnd(handle);
         _keyboardSource?.AddHook(WindowKeyboardHook);
+    }
+
+    private void MainWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+        {
+            ResumeBrowserIfNeeded();
+        }
+        else
+        {
+            SuspendBrowserWhenHidden();
+        }
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -262,6 +280,53 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(e.Uri))
         {
             Navigate(e.Uri);
+        }
+    }
+
+    private async void SuspendBrowserWhenHidden()
+    {
+        _suspendRequested = true;
+        if (_browserSuspended || _suspendInProgress || Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        _suspendInProgress = true;
+        try
+        {
+            _browserSuspended = await Browser.CoreWebView2.TrySuspendAsync();
+            if (_browserSuspended && !_suspendRequested)
+            {
+                Browser.CoreWebView2.Resume();
+                _browserSuspended = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to suspend WebView2.");
+        }
+        finally
+        {
+            _suspendInProgress = false;
+        }
+    }
+
+    private void ResumeBrowserIfNeeded()
+    {
+        _suspendRequested = false;
+        if (!_browserSuspended || Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Browser.CoreWebView2.Resume();
+            _browserSuspended = false;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to resume WebView2.");
         }
     }
 
