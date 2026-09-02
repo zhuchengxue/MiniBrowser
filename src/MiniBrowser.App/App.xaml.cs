@@ -7,7 +7,7 @@ namespace MiniBrowser.App;
 
 public partial class App : System.Windows.Application
 {
-    private readonly List<MainWindow> _windows = [];
+    private SingleInstanceService? _singleInstance;
     private SettingsService? _settingsService;
     private AppSettings? _settings;
     private AdBlockService? _adBlockService;
@@ -16,6 +16,14 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _singleInstance = new SingleInstanceService("MiniBrowser.SingleInstance");
+        if (!_singleInstance.IsPrimary)
+        {
+            _singleInstance.SignalPrimary();
+            Shutdown();
+            return;
+        }
+
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
             if (args.ExceptionObject is Exception ex)
@@ -36,7 +44,7 @@ public partial class App : System.Windows.Application
         _cosmeticScript = _adBlockService.CreateCosmeticScript(BrowserCompatibilityPolicy.AdBlockBypassHosts);
         if (_settings.Windows.Count == 0)
         {
-            _settings.Windows.Add(new WindowProfile
+            var profile = new WindowProfile
             {
                 Url = string.IsNullOrWhiteSpace(_settings.LastUrl) ? _settings.HomeUrl : _settings.LastUrl,
                 Width = _settings.WindowWidth,
@@ -48,49 +56,24 @@ public partial class App : System.Windows.Application
                 MobileMode = _settings.MobileMode,
                 ChromeVisible = _settings.ChromeVisible,
                 SizePresetIndex = _settings.SizePresetIndex
-            });
-        }
-
-        foreach (var profile in _settings.Windows.ToList())
-        {
-            OpenWindow(profile);
-        }
-    }
-
-    public void OpenWindow(WindowProfile? profile = null)
-    {
-        if (_settings is null || _settingsService is null || _adBlockService is null)
-        {
-            return;
-        }
-
-        profile ??= new WindowProfile { Url = _settings.HomeUrl };
-        if (!_settings.Windows.Any(window => window.Id == profile.Id))
-        {
+            };
+            var tab = new TabProfile { Url = profile.Url };
+            profile.Tabs.Add(tab);
+            profile.ActiveTabId = tab.Id;
             _settings.Windows.Add(profile);
-            _settingsService.Save(_settings);
         }
 
-        var window = new MainWindow(_settingsService, _settings, profile, _adBlockService, _cosmeticScript, _windows.Count == 0);
-        window.Closed += (_, _) => _windows.Remove(window);
-        _windows.Add(window);
+        var window = new MainWindow(_settingsService, _settings, _settings.Windows[0], _adBlockService, _cosmeticScript, enableHotkey: true);
+        _singleInstance.StartListening(() => Dispatcher.BeginInvoke(window.ShowFromExternalActivation));
         window.Show();
         window.WindowState = WindowState.Normal;
         window.Activate();
     }
 
-    public void RemoveProfile(WindowProfile profile)
+    protected override void OnExit(ExitEventArgs e)
     {
-        _settings?.Windows.RemoveAll(window => window.Id == profile.Id);
-        if (_settings is not null)
-        {
-            if (_settings.Windows.Count == 0)
-            {
-                _settings.Windows.Add(new WindowProfile { Url = _settings.HomeUrl });
-            }
-
-            _settingsService?.Save(_settings);
-        }
+        _singleInstance?.Dispose();
+        base.OnExit(e);
     }
 
     public void SaveSettings()

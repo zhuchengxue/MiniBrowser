@@ -78,7 +78,7 @@ public sealed class EdgeAutoHideService : IDisposable
             StopRevealTimer();
         }
 
-        _revealed?.Invoke();
+        NotifyOnWindowThread(_revealed);
     }
 
     public void Dispose()
@@ -118,10 +118,10 @@ public sealed class EdgeAutoHideService : IDisposable
 
             if (!_autoHideArmed)
             {
-                if (IsCursorOverWindow() || GetSnappedEdge() != EdgeSide.None)
-                {
-                    _autoHideArmed = true;
-                }
+                // A reveal can leave the pointer on the 4px trigger outside the
+                // restored window. Re-arm only after the user actually enters
+                // the window, otherwise it hides again after about one second.
+                _autoHideArmed = ShouldArmAutoHide(_autoHideArmed, IsCursorOverWindow());
 
                 return;
             }
@@ -283,7 +283,7 @@ public sealed class EdgeAutoHideService : IDisposable
         _lastAutoActionUtc = DateTime.UtcNow;
         _transitioning = false;
         StartRevealTimer();
-        _hidden?.Invoke();
+        NotifyOnWindowThread(_hidden);
     }
 
     private void RevealFromTimer()
@@ -309,7 +309,7 @@ public sealed class EdgeAutoHideService : IDisposable
         _lastAutoActionUtc = DateTime.UtcNow;
         _transitioning = false;
         StopRevealTimer();
-        _revealed?.Invoke();
+        NotifyOnWindowThread(_revealed);
     }
 
     private void StartRevealTimer()
@@ -351,6 +351,23 @@ public sealed class EdgeAutoHideService : IDisposable
         finally
         {
             Monitor.Exit(_sync);
+        }
+    }
+
+    private void NotifyOnWindowThread(Action? callback)
+    {
+        if (callback is null)
+        {
+            return;
+        }
+
+        if (_window.Dispatcher.CheckAccess())
+        {
+            callback();
+        }
+        else
+        {
+            _window.Dispatcher.BeginInvoke(callback);
         }
     }
 
@@ -471,6 +488,11 @@ public sealed class EdgeAutoHideService : IDisposable
                                point.Y <= rect.Top + VisibleStrip + padding,
             _ => false
         };
+    }
+
+    internal static bool ShouldArmAutoHide(bool isArmed, bool cursorOverWindow)
+    {
+        return isArmed || cursorOverWindow;
     }
 
     internal enum EdgeSide

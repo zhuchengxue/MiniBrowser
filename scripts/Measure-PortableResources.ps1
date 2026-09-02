@@ -1,5 +1,7 @@
 param(
-    [int]$WarmupSeconds = 8
+    [int]$WarmupSeconds = 8,
+    [ValidateRange(1, 20)]
+    [int]$TabCount = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,21 +23,88 @@ $tempExe = Join-Path $tempApp "MiniBrowser.App.exe"
 $process = $null
 $childProcesses = @()
 
+function Get-DescendantProcessIds {
+    param(
+        [int]$RootProcessId,
+        [object[]]$ProcessTable
+    )
+
+    $result = [System.Collections.Generic.List[int]]::new()
+    $pending = [System.Collections.Generic.Queue[int]]::new()
+    $pending.Enqueue($RootProcessId)
+    while ($pending.Count -gt 0) {
+        $parentId = $pending.Dequeue()
+        foreach ($child in $ProcessTable | Where-Object { $_.ParentProcessId -eq $parentId }) {
+            if (!$result.Contains([int]$child.ProcessId)) {
+                $result.Add([int]$child.ProcessId)
+                $pending.Enqueue([int]$child.ProcessId)
+            }
+        }
+    }
+
+    return $result.ToArray()
+}
+
 try {
+    $dataDirectory = Join-Path $tempApp "Data"
+    New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
+    $tabs = @(1..$TabCount | ForEach-Object {
+        [ordered]@{
+            Id = "measure-tab-$_"
+            Title = "Measure tab $_"
+            Url = "https://example.com/?tab=$_"
+        }
+    })
+    $settings = [ordered]@{
+        SettingsVersion = 5
+        HomeUrl = "https://example.com"
+        LastUrl = "https://example.com"
+        SearchEngineUrl = "https://www.google.com/search?q={query}"
+        PopupPosition = "BottomRight"
+        EdgeAutoHideEnabled = $false
+        GlobalHotkeyEnabled = $false
+        AutoCheckUpdates = $false
+        AdBlockEnabled = $true
+        Windows = @([ordered]@{
+            Id = "measure-window"
+            Url = $tabs[0].Url
+            Width = 390
+            Height = 844
+            Left = -1
+            Top = -1
+            Opacity = 1.0
+            Topmost = $false
+            ChromeVisible = $true
+            AdBlockEnabled = $true
+            ActiveTabId = $tabs[0].Id
+            Tabs = $tabs
+        })
+    }
+    $settings | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $dataDirectory "settings.json") -Encoding UTF8
+
     $process = Start-Process -FilePath $tempExe -PassThru
     Start-Sleep -Seconds $WarmupSeconds
 
     $app = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-    $childProcesses = @(Get-CimInstance Win32_Process |
-        Where-Object { $_.ParentProcessId -eq $process.Id } |
-        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
-
-    @($app) + @($childProcesses) |
+    $processTable = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+    $descendantIds = @(Get-DescendantProcessIds -RootProcessId $process.Id -ProcessTable $processTable)
+    $childProcesses = @($descendantIds | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+    $allProcesses = @($app) + @($childProcesses) | Where-Object { $_ }
+    $details = @($allProcesses |
         Where-Object { $_ } |
         Select-Object ProcessName,
             Id,
             @{Name = "WorkingSetMB"; Expression = { [Math]::Round($_.WorkingSet64 / 1MB, 1) } },
-            @{Name = "PrivateMB"; Expression = { [Math]::Round($_.PrivateMemorySize64 / 1MB, 1) } }
+            @{Name = "PrivateMB"; Expression = { [Math]::Round($_.PrivateMemorySize64 / 1MB, 1) } })
+
+    Write-Output "Configuration: Tabs=$TabCount WarmupSeconds=$WarmupSeconds"
+    $details
+    [pscustomobject]@{
+        ProcessName = "TOTAL"
+        Id = "-"
+        WorkingSetMB = [Math]::Round(($allProcesses | Measure-Object WorkingSet64 -Sum).Sum / 1MB, 1)
+        PrivateMB = [Math]::Round(($allProcesses | Measure-Object PrivateMemorySize64 -Sum).Sum / 1MB, 1)
+    }
 }
 finally {
     foreach ($child in $childProcesses) {

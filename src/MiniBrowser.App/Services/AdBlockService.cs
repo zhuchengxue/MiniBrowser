@@ -153,25 +153,42 @@ public sealed class AdBlockService
 
     public bool ShouldBlock(string? rawUrl, bool enabled, IEnumerable<string>? whitelist = null)
     {
-        if (!enabled || string.IsNullOrWhiteSpace(rawUrl) || !Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        return Evaluate(rawUrl, enabled, whitelist).IsBlocked;
+    }
+
+    public AdBlockDecision Evaluate(string? rawUrl, bool enabled, IEnumerable<string>? whitelist = null)
+    {
+        if (!enabled)
         {
-            return false;
+            return AdBlockDecision.Allow("disabled");
+        }
+
+        if (string.IsNullOrWhiteSpace(rawUrl) || !Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return AdBlockDecision.Allow("invalid-url");
         }
 
         if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
         {
-            return false;
+            return AdBlockDecision.Allow("unsupported-scheme");
         }
 
         var host = uri.Host;
         if (whitelist is not null && MatchesAnyHost(host, whitelist))
         {
-            return false;
+            return AdBlockDecision.Allow("whitelist");
         }
 
-        if (MatchesBlockedHost(host) || MatchesAnyHost(host, _customBlockedHosts))
+        var blockedHost = FindBlockedHost(host);
+        if (blockedHost is not null)
         {
-            return true;
+            return AdBlockDecision.Block("host", blockedHost);
+        }
+
+        var customHost = _customBlockedHosts.FirstOrDefault(candidate => HostMatches(host, candidate));
+        if (customHost is not null)
+        {
+            return AdBlockDecision.Block("custom-host", customHost);
         }
 
         var absolute = uri.AbsoluteUri;
@@ -179,11 +196,11 @@ public sealed class AdBlockService
         {
             if (absolute.Contains(rule, StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return AdBlockDecision.Block("url", rule);
             }
         }
 
-        return false;
+        return AdBlockDecision.Allow("no-match");
     }
 
     public string CreateCosmeticScript(IEnumerable<string>? bypassHosts = null)
@@ -283,21 +300,21 @@ public sealed class AdBlockService
         return false;
     }
 
-    private bool MatchesBlockedHost(string host)
+    private string? FindBlockedHost(string host)
     {
         var current = host;
         while (!string.IsNullOrWhiteSpace(current))
         {
             if (_blockedHosts.Contains(current))
             {
-                return true;
+                return current;
             }
 
             var dot = current.IndexOf('.');
             current = dot < 0 ? string.Empty : current[(dot + 1)..];
         }
 
-        return false;
+        return null;
     }
 
     private static bool HostMatches(string host, string candidate)
@@ -324,4 +341,10 @@ public sealed class AdBlockService
             .Replace("*", string.Empty, StringComparison.Ordinal)
             .Replace("^", string.Empty, StringComparison.Ordinal);
     }
+}
+
+public readonly record struct AdBlockDecision(bool IsBlocked, string Reason, string? Rule)
+{
+    public static AdBlockDecision Allow(string reason) => new(false, reason, null);
+    public static AdBlockDecision Block(string reason, string rule) => new(true, reason, rule);
 }

@@ -155,41 +155,85 @@
                     </Grid>
                 </Border>
 
-                <Button x:Name="MobileButton"
-                        Grid.Column="2"
-                        Content="Phone"
-                        Width="58"
-                        Margin="8,0,0,0"
-                        Style="{StaticResource RoundButton}"
-                        Visibility="Collapsed"
-                        ToolTip="Phone/Desktop mode"
-                        Click="MobileButton_Click" />
-                <Button x:Name="TopmostButton"
-                        Grid.Column="2"
-                        Content="&#xE718;"
-                        Width="32"
-                        Margin="4,0,0,0"
-                        Style="{StaticResource IconButton}"
-                        Visibility="Collapsed"
-                        ToolTip="Keep on top"
-                        Click="TopmostButton_Click" />
-                <Button x:Name="MenuButton"
-                        Grid.Column="2"
-                        Content="&#xE700;"
-                        Width="34"
-                        Margin="5,0,0,0"
-                        Style="{StaticResource IconButton}"
-                        ToolTip="Menu"
-                        Click="MenuButton_Click" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5,0,0,0">
+                    <Button x:Name="TabOverviewButton"
+                            Width="32"
+                            Height="34"
+                            Style="{StaticResource IconButton}"
+                            ToolTip="Tabs"
+                            Click="TabOverviewButton_Click">
+                        <Border Width="20"
+                                Height="20"
+                                BorderBrush="#4B5563"
+                                BorderThickness="1.4"
+                                CornerRadius="3">
+                            <TextBlock x:Name="TabCountText"
+                                       Text="1"
+                                       FontFamily="Segoe UI"
+                                       FontSize="10"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Button>
+                    <Button x:Name="MenuButton"
+                            Content="&#xE700;"
+                            Width="32"
+                            Style="{StaticResource IconButton}"
+                            ToolTip="Menu"
+                            Click="MenuButton_Click" />
+                </StackPanel>
             </Grid>
         </Border>
 
-        <Border Grid.Row="1"
-                Background="White"
-                BorderBrush="#EAECF0"
-                BorderThickness="0">
+        <ContentControl x:Name="BrowserHost"
+                        Grid.Row="1"
+                        Background="White">
             <wv2:WebView2 x:Name="Browser" />
-        </Border>
+        </ContentControl>
+
+        <Grid x:Name="TabOverviewOverlay"
+              Grid.Row="1"
+              Panel.ZIndex="20"
+              Background="#F5F6F8"
+              Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="52" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="14,8,10,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TabOverviewTitle"
+                           Text="Tabs"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="#111827"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Content="&#xE710;"
+                        Style="{StaticResource IconButton}"
+                        Width="34"
+                        ToolTip="New tab"
+                        Click="OverviewNewTabButton_Click" />
+                <Button Grid.Column="2"
+                        Content="&#xE711;"
+                        Style="{StaticResource IconButton}"
+                        Width="34"
+                        Margin="3,0,0,0"
+                        ToolTip="Close tab overview"
+                        Click="CloseTabOverviewButton_Click" />
+            </Grid>
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="10,4,10,14">
+                <WrapPanel x:Name="TabCardsPanel" HorizontalAlignment="Center" />
+            </ScrollViewer>
+        </Grid>
 
         <ItemsControl x:Name="QuickSites" Visibility="Collapsed" />
 

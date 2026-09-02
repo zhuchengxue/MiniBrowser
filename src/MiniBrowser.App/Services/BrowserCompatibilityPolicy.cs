@@ -10,7 +10,14 @@ public static class BrowserCompatibilityPolicy
         "bing.com",
         "bingapis.com",
         "microsoft.com",
+        "microsoftonline.com",
         "live.com",
+        "github.com",
+        "auth0.com",
+        "okta.com",
+        "apple.com",
+        "paypal.com",
+        "stripe.com",
         "cloudflare.com",
         "challenges.cloudflare.com"
     ];

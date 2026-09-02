@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniBrowser Test Site</title>
+</head>
+<body>
+  <h1>MiniBrowser Test Site</h1>
+  <nav>
+    <a id="same-tab" href="page.html">Same-tab navigation</a>
+    <a id="new-tab" href="page.html?source=target" target="_blank">Target blank</a>
+    <button id="window-open" type="button">Window open</button>
+    <a id="download" href="download.txt" download>Download</a>
+  </nav>
+  <form id="login" action="page.html" method="get">
+    <label>Account <input name="account" autocomplete="username"></label>
+    <button type="submit">Sign in</button>
+  </form>
+  <div class="sponsored-card" data-test="cosmetic-ad">Fixture advertisement</div>
+  <img src="https://ads.example.com/banner.png" alt="network ad fixture">
+  <script>
+    document.querySelector('#window-open').addEventListener('click', () => {
+      window.open('page.html?source=window-open', '_blank');
+    });
+  </script>
+</body>
+</html>

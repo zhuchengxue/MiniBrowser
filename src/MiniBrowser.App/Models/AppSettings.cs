@@ -2,13 +2,13 @@ namespace MiniBrowser.App.Models;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 3;
+    public int SettingsVersion { get; set; } = 5;
     public bool CompatibilityCacheResetPending { get; set; }
     public string HomeUrl { get; set; } = "https://www.google.com/ncr";
     public string LastUrl { get; set; } = "https://www.google.com/ncr";
     public string SearchEngineUrl { get; set; } = "https://www.google.com/search?q={query}";
     public string PopupPosition { get; set; } = "BottomRight";
-    public bool EdgeAutoHideEnabled { get; set; } = true;
+    public bool EdgeAutoHideEnabled { get; set; }
     public bool GlobalHotkeyEnabled { get; set; } = true;
     public bool LowMemoryMode { get; set; }
     public bool AutoCheckUpdates { get; set; }
@@ -66,4 +66,13 @@ public sealed class WindowProfile
     public bool Borderless { get; set; }
     public bool AdBlockEnabled { get; set; } = true;
     public int SizePresetIndex { get; set; }
+    public string ActiveTabId { get; set; } = string.Empty;
+    public List<TabProfile> Tabs { get; set; } = [];
+}
+
+public sealed class TabProfile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Title { get; set; } = "New tab";
+    public string Url { get; set; } = "https://www.google.com/ncr";
 }

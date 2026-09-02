@@ -116,7 +116,7 @@
                 <TextBox IsReadOnly="True"
                          Margin="8"
                          TextWrapping="Wrap"
-                         Text="Ctrl+Shift+Space  Show/hide MiniBrowser and focus address bar&#x0a;Ctrl+L  Focus address bar&#x0a;Ctrl+Shift+L  Show controls and focus address bar&#x0a;Ctrl+T  New window from current page&#x0a;Ctrl+W  Close this window&#x0a;Alt+Left / Alt+Right  Back / forward&#x0a;F5 or Ctrl+R  Reload&#x0a;F8  Clean mode / show controls&#x0a;F9 or Ctrl+Shift+F  Toggle window frame" />
+                         Text="Ctrl+Shift+Space  Show/hide MiniBrowser and focus address bar&#x0a;Ctrl+L  Focus address bar&#x0a;Ctrl+Shift+L  Show controls and focus address bar&#x0a;Ctrl+T  New tab&#x0a;Ctrl+W  Close current tab&#x0a;Ctrl+Tab  Next tab&#x0a;Ctrl+Shift+Tab  Previous tab&#x0a;Alt+Left / Alt+Right  Back / forward&#x0a;F5 or Ctrl+R  Reload&#x0a;F8  Clean mode / show controls&#x0a;F9 or Ctrl+Shift+F  Toggle window frame" />
             </TabItem>
         </TabControl>
 

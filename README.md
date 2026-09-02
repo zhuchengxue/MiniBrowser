@@ -10,11 +10,12 @@ MiniBrowser is a tiny Windows browser shell inspired by MenubarX. It is built wi
 - Global hotkey: `Ctrl+Shift+Space` shows/hides MiniBrowser at the configured bottom position and focuses the address bar.
 - Home defaults to Google NCR: `https://www.google.com/ncr`.
 - Search engine is configurable. The default is Google: `https://www.google.com/search?q={query}`.
-- Multi-window support with restore for window size, position, opacity, topmost, frame, and chrome visibility.
+- Mobile-style single-window tabs: no persistent tab strip, a compact count button, and a card overview with previews.
+- Restored tabs are lazy-loaded; inactive tabs wait 30 seconds before suspension and protect audio, downloads, and authentication flows.
 - Site profiles: save ad blocking, size preset, topmost, frame, chrome visibility, and opacity per host.
 - Ad blocking with built-in host rules, custom hosts, simplified EasyList parsing, and cosmetic CSS hiding.
 - Compatibility bypass for search, login, and bot-verification infrastructure so ad blocking does not break common verification flows.
-- Edge auto-hide keeps a snapped window tucked against the screen edge until the mouse returns.
+- Optional edge auto-hide keeps a snapped window tucked against the screen edge until the mouse returns. It is off by default.
 - Automatic update checks are off by default to keep startup quiet; use Preferences when you want them.
 - Global whitelist and per-site ad blocking toggle.
 - Portable data in `Data/settings.json`, `Data/WebView2`, and `Data/Logs`.
@@ -68,7 +69,10 @@ It verifies:
 - EasyList-style host and URL rules
 - whitelist bypass behavior
 - cosmetic selector injection
-- site profile normalization and persistence
+- tab lifecycle, limits, switching, and restored-session migration
+- URL/search navigation, local development addresses, and Google NCR migration
+- popup positioning at 100%, 125%, and 150% equivalent work areas
+- single-instance signaling, edge state, and site profile persistence
 
 Run self-tests and Release builds sequentially. Both commands compile the app project, so running them in parallel can make MSBuild fight over the same `obj` files.
 
@@ -85,7 +89,7 @@ dist\MiniBrowser-Portable
 dist\MiniBrowser-Portable.zip
 ```
 
-`MiniBrowser-Portable.zip` is the default asset name used by the automatic updater. For a new release, upload this zip to a GitHub Release and use a tag such as `v0.5.1`.
+`MiniBrowser-Portable.zip` is the default asset name used by the automatic updater. For this release, use tag `v0.7.0`.
 
 ## Build Installer Package
 
@@ -138,13 +142,23 @@ The app menu includes `Check for updates`. By default, MiniBrowser checks once p
 https://api.github.com/repos/zhuchengxue/MiniBrowser/releases/latest
 ```
 
-When a newer release contains `MiniBrowser-Portable.zip`, MiniBrowser downloads it, starts an external PowerShell updater, closes itself, replaces app files, preserves `Data`, and restarts.
+When update checks are enabled and a newer release contains `MiniBrowser-Portable.zip`, MiniBrowser downloads it, starts an external PowerShell updater, closes itself, replaces app files, preserves `Data`, and restarts.
 
 To verify that a GitHub Release is ready for automatic updates:
 
 ```powershell
 .\scripts\Verify-Release.ps1
 ```
+
+Local release gates:
+
+```powershell
+.\scripts\Run-SelfTest.ps1
+.\scripts\Test-ColdStart.ps1 -Runs 3
+.\scripts\Test-ReleasePackages.ps1
+```
+
+See `docs/QUALITY-GATES.md` for the acceptance matrix and `docs/PERFORMANCE.md` for the full WebView2 process-tree baseline.
 
 ## Site Profiles
 
@@ -176,8 +190,9 @@ youtube.com|True|False|1|True|True|False|0.92
 - `Ctrl+Shift+Space`: show/hide MiniBrowser and focus address bar
 - `Ctrl+L`: focus address bar
 - `Ctrl+Shift+L`: show controls and focus address bar
-- `Ctrl+T`: new window from current page
-- `Ctrl+W`: close current window
+- `Ctrl+T`: new tab
+- `Ctrl+W`: close current tab
+- `Ctrl+Tab` / `Ctrl+Shift+Tab`: next / previous tab
 - `Alt+Left` / `Alt+Right`: back / forward
 - `F5` or `Ctrl+R`: reload
 - `F8`: clean mode / show controls

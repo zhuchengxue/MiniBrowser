@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using MiniBrowser.App.Infrastructure;
 using MiniBrowser.App.Models;
 using MiniBrowser.App.Services;
@@ -15,7 +16,6 @@ namespace MiniBrowser.App;
 
 public partial class MainWindow : Window
 {
-    private const string GoogleSearchUrl = "https://www.google.com/search?q={query}";
     private static readonly WindowPreset[] SizePresets =
     [
         new("390x844", 390, 844),
@@ -31,20 +31,21 @@ public partial class MainWindow : Window
     private readonly string _cosmeticScript;
     private readonly AppSettings _settings;
     private readonly WindowProfile _profile;
+    private readonly TabSessionService _tabSession;
     private readonly TrayService _trayService;
     private readonly HotkeyService? _hotkeyService;
     private readonly bool _isPrimaryWindow;
+    private readonly List<BrowserTab> _tabs = [];
+    private CoreWebView2Environment? _browserEnvironment;
+    private BrowserTab? _activeTab;
     private bool _hotkeyWarningShown;
     private bool _isReallyClosing;
     private bool _isEditingAddress;
-    private bool _removeProfileOnClose;
     private bool _applyingSiteProfile;
     private bool _usesPopupStartupPosition;
     private bool _browserSuspended;
     private bool _suspendInProgress;
     private bool _suspendRequested;
-    private int _blockedRequestCount;
-    private string _topLevelHost = string.Empty;
     private System.Windows.Interop.HwndSource? _keyboardSource;
 
     public MainWindow(
@@ -59,6 +60,7 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
         _settings = settings;
         _profile = profile;
+        _tabSession = new TabSessionService(profile, settings.HomeUrl);
         _isPrimaryWindow = enableHotkey;
         _adBlockService = adBlockService;
         _cosmeticScript = cosmeticScript;
@@ -154,18 +156,16 @@ public partial class MainWindow : Window
 
             Activate();
 
-            var environment = await CoreWebView2Environment.CreateAsync(
+            _browserEnvironment = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: RuntimePaths.WebView2DataDirectory,
                 options: null);
-            await Browser.EnsureCoreWebView2Async(environment);
-            await ConfigureBrowserAsync();
+            await InitializeTabsAsync();
             if (_settings.CompatibilityCacheResetPending && await ClearRuntimeCacheAsync())
             {
                 _settings.CompatibilityCacheResetPending = false;
                 SaveSettings();
             }
-            Navigate(string.IsNullOrWhiteSpace(_profile.Url) ? _settings.HomeUrl : _profile.Url);
             ScheduleStartupUpdateCheck();
         }
         catch (Exception ex)
@@ -180,62 +180,563 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ConfigureBrowserAsync()
+    private async Task InitializeTabsAsync()
     {
-        Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-        Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
-        Browser.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
-
-        ApplyUserAgent();
-        if (!string.IsNullOrWhiteSpace(_cosmeticScript))
+        if (_browserEnvironment is null)
         {
-            await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_cosmeticScript);
+            return;
         }
 
-        AddAdBlockRequestFilters();
-        Browser.CoreWebView2.NewWindowRequested += Browser_NewWindowRequested;
-        Browser.CoreWebView2.WebResourceRequested += Browser_WebResourceRequested;
-        Browser.CoreWebView2.NavigationStarting += (_, args) =>
+        foreach (var tabProfile in _profile.Tabs)
         {
-            _topLevelHost = HostFromUrl(args.Uri);
-            if (!_isEditingAddress)
+            _tabs.Add(new BrowserTab(tabProfile));
+        }
+
+        var active = _tabs.FirstOrDefault(tab => tab.Profile.Id == _profile.ActiveTabId) ?? _tabs[0];
+        active.Browser = Browser;
+        AttachBrowserKeyboardHandlers(Browser);
+        _activeTab = active;
+        _profile.ActiveTabId = active.Profile.Id;
+        BrowserHost.Content = Browser;
+        await InitializeBrowserAsync(active, navigate: true);
+        RenderTabs();
+    }
+
+    private async Task InitializeBrowserAsync(BrowserTab tab, bool navigate)
+    {
+        if (_browserEnvironment is null)
+        {
+            return;
+        }
+
+        if (tab.Browser is null)
+        {
+            tab.Browser = new WebView2();
+            AttachBrowserKeyboardHandlers(tab.Browser);
+        }
+
+        if (!tab.IsInitialized)
+        {
+            await tab.Browser.EnsureCoreWebView2Async(_browserEnvironment);
+            await ConfigureBrowserAsync(tab.Browser, tab);
+            tab.IsInitialized = true;
+        }
+
+        if (navigate && !IsPersistableUrl(tab.Browser.Source?.ToString()))
+        {
+            NavigateTab(tab, tab.Profile.Url);
+        }
+    }
+
+    private void AttachBrowserKeyboardHandlers(WebView2 browser)
+    {
+        browser.PreviewKeyDown -= Browser_KeyDown;
+        browser.KeyDown -= Browser_KeyDown;
+        browser.PreviewKeyDown += Browser_KeyDown;
+        browser.KeyDown += Browser_KeyDown;
+    }
+
+    private async Task CreateNewTabAsync(string? rawUrl = null, bool activate = true)
+    {
+        if (_tabSession.Tabs.Count >= TabSessionService.MaximumTabs)
+        {
+            StatusText.Text = $"Tab limit reached ({TabSessionService.MaximumTabs})";
+            return;
+        }
+
+        var url = string.IsNullOrWhiteSpace(rawUrl) ? _settings.HomeUrl : NormalizeUrl(rawUrl);
+        var profile = _tabSession.Create(url);
+        var tab = new BrowserTab(profile);
+        _profile.Tabs.Add(profile);
+        _tabs.Add(tab);
+        RenderTabs();
+        if (activate)
+        {
+            HideTabOverview();
+            await ActivateTabAsync(tab);
+            FocusAddressBar();
+        }
+
+        SaveSettings();
+    }
+
+    private async Task ActivateTabAsync(BrowserTab tab)
+    {
+        if (ReferenceEquals(tab, _activeTab) && tab.IsInitialized)
+        {
+            return;
+        }
+
+        var previous = _activeTab;
+        if (previous is not null && previous.Browser is not null)
+        {
+            var previousUrl = previous.Browser.Source?.ToString();
+            if (IsPersistableUrl(previousUrl))
+            {
+                previous.Profile.Url = previousUrl!;
+            }
+            await CaptureTabPreviewAsync(previous);
+            ScheduleSuspendTab(previous);
+        }
+
+        _activeTab = tab;
+        _tabSession.Activate(tab.Profile.Id);
+        if (tab.Browser is null)
+        {
+            tab.Browser = new WebView2();
+            AttachBrowserKeyboardHandlers(tab.Browser);
+        }
+
+        BrowserHost.Content = null;
+        Browser = tab.Browser;
+        BrowserHost.Content = Browser;
+        await InitializeBrowserAsync(tab, navigate: true);
+        CancelPendingSuspend(tab);
+        ResumeTab(tab);
+        AddressBox.Text = tab.Browser.Source?.ToString() ?? tab.Profile.Url;
+        _profile.Url = tab.Profile.Url;
+        _settings.LastUrl = tab.Profile.Url;
+        ApplySiteProfileForUrl(tab.Profile.Url, saveWindowState: false);
+        UpdateNavigationButtons();
+        RenderTabs();
+        SaveSettings();
+    }
+
+    private static async Task SuspendTabAsync(BrowserTab tab)
+    {
+        if (!tab.IsInitialized || tab.IsSuspended || tab.Browser?.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            tab.IsSuspended = await tab.Browser.CoreWebView2.TrySuspendAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            tab.IsSuspended = false;
+        }
+    }
+
+    private void ScheduleSuspendTab(BrowserTab tab)
+    {
+        CancelPendingSuspend(tab);
+        tab.SuspendCancellation = new CancellationTokenSource();
+        _ = SuspendTabAfterDelayAsync(tab, tab.SuspendCancellation.Token);
+    }
+
+    private static async Task SuspendTabAfterDelayAsync(BrowserTab tab, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+            var core = tab.Browser?.CoreWebView2;
+            if (core is null ||
+                !TabSuspensionPolicy.CanSuspend(tab.TopLevelHost, core.IsDocumentPlayingAudio, tab.ActiveDownloads))
+            {
+                return;
+            }
+
+            await SuspendTabAsync(tab);
+        }
+        catch (OperationCanceledException)
+        {
+            // Returning to a tab cancels its pending background suspension.
+        }
+    }
+
+    private static void CancelPendingSuspend(BrowserTab tab)
+    {
+        tab.SuspendCancellation?.Cancel();
+        tab.SuspendCancellation?.Dispose();
+        tab.SuspendCancellation = null;
+    }
+
+    private static void ResumeTab(BrowserTab tab)
+    {
+        if (!tab.IsSuspended || tab.Browser?.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            tab.Browser.CoreWebView2.Resume();
+        }
+        catch (InvalidOperationException)
+        {
+            // The tab may already have resumed while it was being activated.
+        }
+
+        tab.IsSuspended = false;
+    }
+
+    private async Task CloseTabAsync(BrowserTab tab)
+    {
+        var index = _tabs.IndexOf(tab);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var closeResult = _tabSession.Close(tab.Profile.Id);
+        if (_tabs.Count == 1)
+        {
+            var replacement = new BrowserTab(closeResult.Active);
+            _tabs.Add(replacement);
+            await ActivateTabAsync(replacement);
+        }
+        else if (ReferenceEquals(tab, _activeTab))
+        {
+            var replacement = _tabs.First(item => item.Profile.Id == closeResult.Active.Id);
+            await ActivateTabAsync(replacement);
+        }
+
+        _tabs.Remove(tab);
+        CancelPendingSuspend(tab);
+        tab.Browser?.Dispose();
+        RenderTabs();
+        SaveSettings();
+    }
+
+    private void RenderTabs()
+    {
+        TabCountText.Text = _tabs.Count > 99 ? "99+" : _tabs.Count.ToString();
+        TabOverviewButton.ToolTip = $"Tabs ({_tabs.Count})";
+        if (TabOverviewOverlay.Visibility == Visibility.Visible)
+        {
+            RenderTabOverview();
+        }
+    }
+
+    private async void TabOverviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabOverviewOverlay.Visibility == Visibility.Visible)
+        {
+            HideTabOverview();
+            return;
+        }
+
+        await ShowTabOverviewAsync();
+    }
+
+    private async void OverviewNewTabButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CreateNewTabAsync();
+    }
+
+    private void CloseTabOverviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideTabOverview();
+    }
+
+    private async Task ShowTabOverviewAsync()
+    {
+        if (_activeTab is not null)
+        {
+            await CaptureTabPreviewAsync(_activeTab);
+        }
+
+        BrowserHost.Visibility = Visibility.Collapsed;
+        TabOverviewOverlay.Visibility = Visibility.Visible;
+        TabOverviewTitle.Text = _tabs.Count == 1 ? "1 tab" : $"{_tabs.Count} tabs";
+        RenderTabOverview();
+    }
+
+    private void HideTabOverview()
+    {
+        TabOverviewOverlay.Visibility = Visibility.Collapsed;
+        BrowserHost.Visibility = Visibility.Visible;
+        Browser.Focus();
+    }
+
+    private void RenderTabOverview()
+    {
+        TabOverviewTitle.Text = _tabs.Count == 1 ? "1 tab" : $"{_tabs.Count} tabs";
+        TabCardsPanel.Children.Clear();
+        var cardWidth = Math.Clamp((ActualWidth - 42) / 2, 132, 184);
+        foreach (var tab in _tabs)
+        {
+            var card = CreateTabCard(tab, cardWidth);
+            TabCardsPanel.Children.Add(card);
+        }
+    }
+
+    private Border CreateTabCard(BrowserTab tab, double width)
+    {
+        var preview = new Grid { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(238, 240, 244)) };
+        if (tab.Preview is not null)
+        {
+            preview.Children.Add(new System.Windows.Controls.Image { Source = tab.Preview, Stretch = System.Windows.Media.Stretch.UniformToFill });
+        }
+        else
+        {
+            preview.Children.Add(new TextBlock
+            {
+                Text = "\uE774",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+                FontSize = 28,
+                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 156, 169)),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center
+            });
+        }
+
+        var close = new System.Windows.Controls.Button
+        {
+            Content = "\uE711",
+            FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 10,
+            Width = 26,
+            Height = 26,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 6, 6, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(220, 255, 255, 255)),
+            BorderThickness = new Thickness(0),
+            ToolTip = "Close tab"
+        };
+        close.Click += async (_, args) =>
+        {
+            args.Handled = true;
+            await CloseTabAsync(tab);
+            if (TabOverviewOverlay.Visibility == Visibility.Visible)
+            {
+                RenderTabOverview();
+            }
+        };
+        preview.Children.Add(close);
+
+        var title = new TextBlock
+        {
+            Text = tab.Profile.Title,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(31, 41, 55)),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        var host = new TextBlock
+        {
+            Text = HostFromUrl(tab.Profile.Url),
+            FontSize = 10,
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(107, 114, 128)),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 3, 0, 0)
+        };
+        var details = new StackPanel { Margin = new Thickness(10, 9, 10, 10) };
+        details.Children.Add(title);
+        details.Children.Add(host);
+
+        var layout = new Grid();
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(142) });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.Children.Add(preview);
+        Grid.SetRow(details, 1);
+        layout.Children.Add(details);
+
+        var card = new Border
+        {
+            Width = width,
+            MinHeight = 198,
+            Margin = new Thickness(5),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = ReferenceEquals(tab, _activeTab) ? new Thickness(1.5) : new Thickness(1),
+            BorderBrush = ReferenceEquals(tab, _activeTab)
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(55, 65, 81))
+                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(218, 222, 229)),
+            Background = System.Windows.Media.Brushes.White,
+            ClipToBounds = true,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Child = layout,
+            ToolTip = tab.Profile.Url
+        };
+        card.MouseLeftButtonUp += async (_, args) =>
+        {
+            if (args.Handled)
+            {
+                return;
+            }
+
+            await ActivateTabAsync(tab);
+            HideTabOverview();
+        };
+        return card;
+    }
+
+    private static async Task CaptureTabPreviewAsync(BrowserTab tab)
+    {
+        if (!tab.IsInitialized || tab.Browser?.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await tab.Browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+            stream.Position = 0;
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            tab.Preview = image;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to capture tab preview.");
+        }
+    }
+
+    private static string NormalizeTabTitle(string? title, string url)
+    {
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            return title.Trim();
+        }
+
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : "New tab";
+    }
+
+    private static bool IsPersistableUrl(string? rawUrl)
+    {
+        return Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private void NavigateTab(BrowserTab tab, string rawUrl)
+    {
+        if (tab.Browser is null)
+        {
+            return;
+        }
+
+        var url = NormalizeUrl(rawUrl);
+        tab.Profile.Url = url;
+        if (ReferenceEquals(tab, _activeTab))
+        {
+            AddressBox.Text = url;
+            ApplySiteProfileForUrl(url, saveWindowState: false);
+        }
+
+        tab.Browser.Source = new Uri(url);
+    }
+
+    private async Task ConfigureBrowserAsync(WebView2 browser, BrowserTab tab)
+    {
+        browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+        browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
+        browser.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
+
+        browser.CoreWebView2.Settings.UserAgent = string.Empty;
+        if (!string.IsNullOrWhiteSpace(_cosmeticScript))
+        {
+            await browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_cosmeticScript);
+        }
+
+        AddAdBlockRequestFilters(browser);
+        browser.CoreWebView2.NewWindowRequested += (_, args) =>
+        {
+            args.Handled = true;
+            if (!string.IsNullOrWhiteSpace(args.Uri))
+            {
+                Dispatcher.BeginInvoke(() => _ = CreateNewTabAsync(args.Uri, activate: true));
+            }
+        };
+        browser.CoreWebView2.DownloadStarting += (_, args) =>
+        {
+            tab.ActiveDownloads++;
+            var operation = args.DownloadOperation;
+            EventHandler<object>? stateChanged = null;
+            stateChanged = (_, _) =>
+            {
+                if (operation.State == CoreWebView2DownloadState.InProgress)
+                {
+                    return;
+                }
+
+                tab.ActiveDownloads = Math.Max(0, tab.ActiveDownloads - 1);
+                operation.StateChanged -= stateChanged;
+            };
+            operation.StateChanged += stateChanged;
+        };
+        browser.CoreWebView2.WebResourceRequested += (_, args) => Browser_WebResourceRequested(tab, browser, args);
+        browser.CoreWebView2.NavigationStarting += (_, args) =>
+        {
+            if (!IsPersistableUrl(args.Uri))
+            {
+                return;
+            }
+
+            tab.TopLevelHost = HostFromUrl(args.Uri);
+            tab.BlockedRequestCount = 0;
+            tab.LastBlockedRule = string.Empty;
+            tab.Profile.Url = args.Uri;
+            if (ReferenceEquals(_activeTab, tab) && !_isEditingAddress)
             {
                 AddressBox.Text = args.Uri;
             }
 
-            StatusText.Text = "Loading...";
-            UpdateNavigationButtons();
+            if (ReferenceEquals(_activeTab, tab))
+            {
+                StatusText.Text = "Loading...";
+                UpdateNavigationButtons();
+            }
         };
-        Browser.CoreWebView2.NavigationCompleted += (_, args) =>
+        browser.CoreWebView2.NavigationCompleted += (_, args) =>
         {
-            StatusText.Text = args.IsSuccess ? "Ready" : $"Load failed: {args.WebErrorStatus}";
-            if (!_isEditingAddress)
+            var currentUrl = browser.Source?.ToString();
+            if (IsPersistableUrl(currentUrl))
             {
-                AddressBox.Text = Browser.Source?.ToString() ?? AddressBox.Text;
+                tab.Profile.Url = currentUrl!;
+            }
+            tab.Profile.Title = NormalizeTabTitle(browser.CoreWebView2.DocumentTitle, tab.Profile.Url);
+            if (ReferenceEquals(_activeTab, tab))
+            {
+                StatusText.Text = args.IsSuccess ? "Ready" : $"Load failed: {args.WebErrorStatus}";
+                if (!_isEditingAddress)
+                {
+                    AddressBox.Text = tab.Profile.Url;
+                }
+
+                if (args.IsSuccess)
+                {
+                    _profile.Url = tab.Profile.Url;
+                    _settings.LastUrl = tab.Profile.Url;
+                    ApplySiteProfileForUrl(tab.Profile.Url, saveWindowState: false);
+                }
+
+                UpdateNavigationButtons();
             }
 
-            if (args.IsSuccess)
-            {
-                _profile.Url = Browser.Source?.ToString() ?? AddressBox.Text;
-                _settings.LastUrl = _profile.Url;
-                ApplySiteProfileForUrl(_profile.Url, saveWindowState: false);
-                SaveSettings();
-            }
-
-            UpdateNavigationButtons();
+            RenderTabs();
+            SaveSettings();
         };
-        Browser.CoreWebView2.SourceChanged += (_, _) =>
+        browser.CoreWebView2.SourceChanged += (_, _) =>
         {
-            if (!_isEditingAddress)
+            var currentUrl = browser.Source?.ToString();
+            if (!IsPersistableUrl(currentUrl))
             {
-                AddressBox.Text = Browser.Source?.ToString() ?? AddressBox.Text;
+                return;
             }
 
-            UpdateNavigationButtons();
+            tab.Profile.Url = currentUrl!;
+            if (ReferenceEquals(_activeTab, tab) && !_isEditingAddress)
+            {
+                AddressBox.Text = tab.Profile.Url;
+            }
+
+            if (ReferenceEquals(_activeTab, tab))
+            {
+                UpdateNavigationButtons();
+            }
         };
     }
 
-    private void AddAdBlockRequestFilters()
+    private static void AddAdBlockRequestFilters(WebView2 browser)
     {
         var contexts = new[]
         {
@@ -251,33 +752,28 @@ public partial class MainWindow : Window
 
         foreach (var context in contexts)
         {
-            Browser.CoreWebView2.AddWebResourceRequestedFilter("*", context);
+            browser.CoreWebView2.AddWebResourceRequestedFilter("*", context);
         }
     }
 
-    private void Browser_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+    private void Browser_WebResourceRequested(BrowserTab tab, WebView2 browser, CoreWebView2WebResourceRequestedEventArgs e)
     {
-        var enabled = IsAdBlockEnabledForUrl(e.Request.Uri);
-        if (!_adBlockService.ShouldBlock(e.Request.Uri, enabled, _settings.AdBlockWhitelist))
+        var enabled = IsAdBlockEnabledForUrl(tab, e.Request.Uri);
+        var decision = _adBlockService.Evaluate(e.Request.Uri, enabled, _settings.AdBlockWhitelist);
+        if (!decision.IsBlocked)
         {
             return;
         }
 
-        _blockedRequestCount++;
-        e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
+        tab.BlockedRequestCount++;
+        tab.LastBlockedRule = string.IsNullOrWhiteSpace(decision.Rule)
+            ? decision.Reason
+            : $"{decision.Reason}: {decision.Rule}";
+        e.Response = browser.CoreWebView2.Environment.CreateWebResourceResponse(
             new MemoryStream([]),
             204,
             "Blocked",
             "Content-Type: text/plain");
-    }
-
-    private void Browser_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
-    {
-        e.Handled = true;
-        if (!string.IsNullOrWhiteSpace(e.Uri))
-        {
-            Navigate(e.Uri);
-        }
     }
 
     private async void SuspendBrowserWhenHidden()
@@ -351,37 +847,7 @@ public partial class MainWindow : Window
 
     private string NormalizeUrl(string raw)
     {
-        var value = raw.Trim();
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return _settings.HomeUrl;
-        }
-
-        if (Uri.TryCreate(value, UriKind.Absolute, out var absolute) &&
-            (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
-        {
-            return absolute.ToString();
-        }
-
-        if (value.Contains('.') && !value.Contains(' '))
-        {
-            return "https://" + value;
-        }
-
-        return BuildSearchUrl(value);
-    }
-
-    private string BuildSearchUrl(string query)
-    {
-        var template = string.IsNullOrWhiteSpace(_settings.SearchEngineUrl)
-            ? GoogleSearchUrl
-            : _settings.SearchEngineUrl;
-        if (!template.Contains("{query}", StringComparison.OrdinalIgnoreCase))
-        {
-            template = GoogleSearchUrl;
-        }
-
-        return template.Replace("{query}", Uri.EscapeDataString(query), StringComparison.OrdinalIgnoreCase);
+        return NavigationService.Resolve(raw, _settings.HomeUrl, _settings.SearchEngineUrl);
     }
 
     private void ApplyUserAgent()
@@ -398,9 +864,8 @@ public partial class MainWindow : Window
 
     private void UpdateToggleLabels()
     {
-        TopmostButton.Content = Topmost ? "\uE840" : "\uE718";
-        MobileButton.Content = _profile.MobileMode ? "Phone" : "Desk";
         MenuButton.Content = "\uE700";
+        RenderTabs();
         UpdateNavigationButtons();
     }
 
@@ -494,12 +959,21 @@ public partial class MainWindow : Window
         home.Click += (_, _) => Navigate(_settings.HomeUrl);
         menu.Items.Add(home);
 
-        var newWindow = new MenuItem { Header = "New window    Ctrl+T" };
-        newWindow.Click += (_, _) => OpenNewWindowFromCurrentPage();
-        menu.Items.Add(newWindow);
+        var newTab = new MenuItem { Header = "New tab    Ctrl+T" };
+        newTab.Click += (_, _) => _ = CreateNewTabAsync();
+        menu.Items.Add(newTab);
 
         menu.Items.Add(new Separator());
-        var shield = new MenuItem { Header = IsCurrentSiteAdBlockEnabled() ? "Ad block: ON for this site" : "Ad block: OFF for this site" };
+        var blockedCount = _activeTab?.BlockedRequestCount ?? 0;
+        var shield = new MenuItem
+        {
+            Header = IsCurrentSiteAdBlockEnabled()
+                ? $"Ad block: ON · {blockedCount} blocked"
+                : "Ad block: OFF for this site",
+            ToolTip = string.IsNullOrWhiteSpace(_activeTab?.LastBlockedRule)
+                ? "No blocked request on this page"
+                : $"Last rule: {_activeTab.LastBlockedRule}"
+        };
         shield.Click += ShieldButton_Click;
         menu.Items.Add(shield);
 
@@ -525,9 +999,15 @@ public partial class MainWindow : Window
         hideWindow.Click += (_, _) => Hide();
         menu.Items.Add(hideWindow);
 
-        var closeWindow = new MenuItem { Header = "Close this window    Ctrl+W" };
-        closeWindow.Click += (_, _) => CloseThisWindow();
-        menu.Items.Add(closeWindow);
+        var closeTab = new MenuItem { Header = "Close tab    Ctrl+W" };
+        closeTab.Click += (_, _) =>
+        {
+            if (_activeTab is not null)
+            {
+                _ = CloseTabAsync(_activeTab);
+            }
+        };
+        menu.Items.Add(closeTab);
 
         menu.PlacementTarget = MenuButton;
         menu.IsOpen = true;
@@ -844,6 +1324,24 @@ public partial class MainWindow : Window
 
     private bool HandleShortcut(Key key, ModifierKeys modifiers)
     {
+        if (key == Key.Escape && TabOverviewOverlay.Visibility == Visibility.Visible)
+        {
+            HideTabOverview();
+            return true;
+        }
+
+        if (key == Key.Tab && modifiers == ModifierKeys.Control)
+        {
+            ActivateRelativeTab(1);
+            return true;
+        }
+
+        if (key == Key.Tab && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            ActivateRelativeTab(-1);
+            return true;
+        }
+
         if (modifiers == ModifierKeys.Control && key == Key.L)
         {
             ShowChromeAndFocusAddress();
@@ -864,13 +1362,16 @@ public partial class MainWindow : Window
 
         if (modifiers == ModifierKeys.Control && key == Key.W)
         {
-            CloseThisWindow();
+            if (_activeTab is not null)
+            {
+                _ = CloseTabAsync(_activeTab);
+            }
             return true;
         }
 
         if (modifiers == ModifierKeys.Control && key == Key.T)
         {
-            OpenNewWindowFromCurrentPage();
+            _ = CreateNewTabAsync();
             return true;
         }
 
@@ -919,6 +1420,18 @@ public partial class MainWindow : Window
         }
 
         return false;
+    }
+
+    private void ActivateRelativeTab(int offset)
+    {
+        if (_activeTab is null || _tabs.Count < 2)
+        {
+            return;
+        }
+
+        var profile = _tabSession.ActivateRelative(offset);
+        var next = _tabs.First(tab => tab.Profile.Id == profile.Id);
+        _ = ActivateTabAsync(next);
     }
 
     private static ModifierKeys CurrentModifierKeys()
@@ -976,14 +1489,6 @@ public partial class MainWindow : Window
         System.Windows.Application.Current.Shutdown();
     }
 
-    private void CloseThisWindow()
-    {
-        _removeProfileOnClose = true;
-        ((App)System.Windows.Application.Current).RemoveProfile(_profile);
-        _isReallyClosing = true;
-        Close();
-    }
-
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!_isReallyClosing)
@@ -995,10 +1500,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!_removeProfileOnClose)
-        {
-            SaveSettings();
-        }
+        SaveSettings();
 
         _trayService.Dispose();
         _hotkeyService?.Dispose();
@@ -1011,6 +1513,11 @@ public partial class MainWindow : Window
         _keyboardSource?.RemoveHook(WindowKeyboardHook);
         _trayService.Dispose();
         _hotkeyService?.Dispose();
+        foreach (var tab in _tabs)
+        {
+            CancelPendingSuspend(tab);
+            tab.Browser?.Dispose();
+        }
         base.OnClosed(e);
     }
 
@@ -1030,15 +1537,25 @@ public partial class MainWindow : Window
 
         _profile.Left = Left;
         _profile.Top = Top;
-        _profile.Url = Browser.Source?.ToString() ?? _profile.Url;
+        if (_activeTab is not null)
+        {
+            var currentUrl = Browser.Source?.ToString();
+            if (IsPersistableUrl(currentUrl))
+            {
+                _activeTab.Profile.Url = currentUrl!;
+            }
+            _profile.ActiveTabId = _activeTab.Profile.Id;
+            _profile.Url = _activeTab.Profile.Url;
+        }
         _settings.LastUrl = _profile.Url;
         _settingsService.Save(_settings);
     }
 
-    private bool IsAdBlockEnabledForUrl(string rawUrl)
+    private bool IsAdBlockEnabledForUrl(BrowserTab tab, string rawUrl)
     {
-        var currentHost = CurrentHost();
-        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(_topLevelHost, currentHost))
+        var currentHost = HostFromUrl(tab.Browser?.Source?.ToString() ?? string.Empty);
+        var topLevelHost = string.IsNullOrWhiteSpace(tab.TopLevelHost) ? currentHost : tab.TopLevelHost;
+        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(topLevelHost, currentHost))
         {
             return false;
         }
@@ -1048,13 +1565,13 @@ public partial class MainWindow : Window
             return _settings.AdBlockEnabled && _profile.AdBlockEnabled;
         }
 
-        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(_topLevelHost, uri.Host))
+        if (BrowserCompatibilityPolicy.BypassAdBlockForRequest(topLevelHost, uri.Host))
         {
             return false;
         }
 
         return _settings.AdBlockEnabled &&
-               (SiteProfileForHost(uri.Host)?.AdBlockEnabled ?? _profile.AdBlockEnabled);
+               (SiteProfileForHost(topLevelHost)?.AdBlockEnabled ?? _profile.AdBlockEnabled);
     }
 
     private bool IsCurrentSiteAdBlockEnabled()
@@ -1349,6 +1866,26 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(FocusAddressBar, DispatcherPriority.ContextIdle);
     }
 
+    public void ShowFromExternalActivation()
+    {
+        _edgeAutoHideService.Reveal();
+        ShowChrome();
+        if (!IsVisible)
+        {
+            Show();
+            WindowState = WindowState.Normal;
+            PositionPopup(_trayService.GetTrayAnchorPoint());
+        }
+
+        BringWindowToForeground();
+        FocusAddressBar();
+        Dispatcher.BeginInvoke(() =>
+        {
+            BringWindowToForeground();
+            FocusAddressBar();
+        }, DispatcherPriority.ApplicationIdle);
+    }
+
     private void BringWindowToForeground()
     {
         Focus();
@@ -1415,33 +1952,16 @@ public partial class MainWindow : Window
         _edgeAutoHideService.Reveal();
         var width = ActualWidth > 0 ? ActualWidth : Width;
         var height = ActualHeight > 0 ? ActualHeight : Height;
-        var margin = 8d;
-        var targetLeft = _settings.PopupPosition switch
-        {
-            "BottomLeft" => topLeft.X + margin,
-            "BottomCenter" => topLeft.X + ((bottomRight.X - topLeft.X) - width) / 2,
-            _ => bottomRight.X - width - margin
-        };
-        var targetTop = bottomRight.Y - height - margin;
-
-        Left = Math.Clamp(targetLeft, topLeft.X + margin, bottomRight.X - width - margin);
-        Top = Math.Clamp(targetTop, topLeft.Y + margin, bottomRight.Y - height - margin);
-    }
-
-    private void OpenNewWindowFromCurrentPage()
-    {
-        ((App)System.Windows.Application.Current).OpenWindow(new WindowProfile
-        {
-            Url = Browser.Source?.ToString() ?? _settings.HomeUrl,
-            Width = Width,
-            Height = Height,
-            MobileMode = _profile.MobileMode,
-            Topmost = Topmost,
-            Borderless = _profile.Borderless,
-            ChromeVisible = _profile.ChromeVisible,
-            AdBlockEnabled = _profile.AdBlockEnabled,
-            SizePresetIndex = _profile.SizePresetIndex
-        });
+        var bounds = WindowPlacementService.Calculate(
+            topLeft.X,
+            topLeft.Y,
+            bottomRight.X,
+            bottomRight.Y,
+            width,
+            height,
+            _settings.PopupPosition);
+        Left = bounds.Left;
+        Top = bounds.Top;
     }
 
     private static double ClampOpacity(double value)
@@ -1455,6 +1975,20 @@ public partial class MainWindow : Window
     }
 
     private sealed record WindowPreset(string Name, double Width, double Height);
+
+    private sealed class BrowserTab(TabProfile profile)
+    {
+        public TabProfile Profile { get; } = profile;
+        public WebView2? Browser { get; set; }
+        public string TopLevelHost { get; set; } = string.Empty;
+        public bool IsInitialized { get; set; }
+        public bool IsSuspended { get; set; }
+        public int ActiveDownloads { get; set; }
+        public int BlockedRequestCount { get; set; }
+        public string LastBlockedRule { get; set; } = string.Empty;
+        public CancellationTokenSource? SuspendCancellation { get; set; }
+        public System.Windows.Media.ImageSource? Preview { get; set; }
+    }
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);

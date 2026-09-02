@@ -19,11 +19,16 @@ public sealed class SettingsService
     private readonly string _backupPath;
     private string? _lastSavedJson;
 
-    public SettingsService()
+    public SettingsService(string? dataDirectory = null)
     {
-        _settingsPath = RuntimePaths.SettingsPath;
-        _backupPath = RuntimePaths.SettingsBackupPath;
-        TryMigrateLegacySettings();
+        var directory = dataDirectory ?? RuntimePaths.DataDirectory;
+        Directory.CreateDirectory(directory);
+        _settingsPath = Path.Combine(directory, "settings.json");
+        _backupPath = Path.Combine(directory, "settings.backup.json");
+        if (dataDirectory is null)
+        {
+            TryMigrateLegacySettings();
+        }
     }
 
     public AppSettings Load()
@@ -96,6 +101,19 @@ public sealed class SettingsService
             settings.SettingsVersion = 3;
         }
 
+        if (settings.SettingsVersion < 4)
+        {
+            MergeLegacyWindowsIntoTabs(settings);
+            settings.SettingsVersion = 4;
+        }
+
+        // Version 5 makes the historically fragile edge behavior opt-in.
+        if (settings.SettingsVersion < 5)
+        {
+            settings.EdgeAutoHideEnabled = false;
+            settings.SettingsVersion = 5;
+        }
+
         settings.LowMemoryMode = false;
 
         settings.HomeUrl = NormalizeGoogleHomeUrl(settings.HomeUrl);
@@ -123,6 +141,11 @@ public sealed class SettingsService
             .OrderBy(site => site.Host, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        if (settings.Windows.Count > 1)
+        {
+            MergeLegacyWindowsIntoTabs(settings);
+        }
+
         foreach (var window in settings.Windows)
         {
             window.Url = NormalizeUrl(window.Url, settings.HomeUrl);
@@ -137,7 +160,56 @@ public sealed class SettingsService
             {
                 window.Id = Guid.NewGuid().ToString("N");
             }
+
+            window.Tabs ??= [];
+            foreach (var tab in window.Tabs)
+            {
+                if (string.IsNullOrWhiteSpace(tab.Id))
+                {
+                    tab.Id = Guid.NewGuid().ToString("N");
+                }
+
+                tab.Url = NormalizeBrowserUrl(tab.Url, settings.HomeUrl);
+                tab.Title = string.IsNullOrWhiteSpace(tab.Title) ? "New tab" : tab.Title.Trim();
+            }
+
+            window.Tabs = window.Tabs
+                .GroupBy(tab => tab.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last())
+                .Take(TabSessionService.MaximumTabs)
+                .ToList();
+            if (window.Tabs.Count == 0)
+            {
+                window.Tabs.Add(new TabProfile { Url = window.Url });
+            }
+
+            if (!window.Tabs.Any(tab => tab.Id == window.ActiveTabId))
+            {
+                window.ActiveTabId = window.Tabs[0].Id;
+            }
+
+            var activeTab = window.Tabs.First(tab => tab.Id == window.ActiveTabId);
+            window.Url = activeTab.Url;
         }
+    }
+
+    private static void MergeLegacyWindowsIntoTabs(AppSettings settings)
+    {
+        if (settings.Windows.Count == 0)
+        {
+            return;
+        }
+
+        var windows = settings.Windows.ToList();
+        var primary = windows[0];
+        var tabs = windows
+            .SelectMany(window => window.Tabs is { Count: > 0 }
+                ? window.Tabs
+                : [new TabProfile { Title = window.Title, Url = window.Url }])
+            .ToList();
+        primary.Tabs = tabs;
+        primary.ActiveTabId = tabs[0].Id;
+        settings.Windows = [primary];
     }
 
     private static double NormalizeRange(double value, double fallback, double min, double max)
@@ -163,6 +235,15 @@ public sealed class SettingsService
     private static string NormalizeUrl(string value, string fallback)
     {
         return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private static string NormalizeBrowserUrl(string value, string fallback)
+    {
+        var normalized = NormalizeGoogleStartUrl(NormalizeUrl(value, fallback));
+        return Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? normalized
+            : fallback;
     }
 
     private static string NormalizeGoogleHomeUrl(string value)

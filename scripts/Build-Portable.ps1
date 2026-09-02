@@ -102,8 +102,10 @@ Shortcuts:
   Ctrl+Shift+Space  Show/hide first window
   Ctrl+L            Focus address bar
   Ctrl+Shift+L      Show controls and focus address bar
-  Ctrl+T            New window from current page
-  Ctrl+W            Close this window
+  Ctrl+T            New tab
+  Ctrl+W            Close current tab
+  Ctrl+Tab          Next tab
+  Ctrl+Shift+Tab    Previous tab
   Alt+Left/Right    Back/forward
   F5                Reload
   Ctrl+R            Reload
